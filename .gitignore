@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build output (matches in any subdirectory: server/dist/, client/dist/, etc.)
+dist/
+
+# Drizzle generated migrations (regenerated from schema when needed)
+server/drizzle/
+
+# Database files (any subdirectory: server/data/, etc.)
+*.db
+*.db-wal
+*.db-shm
+server/data/
+
+# Environment variables
+.env
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE / editor
+.vscode/settings.json
+*.swp
+*.swo

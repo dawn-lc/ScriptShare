@@ -1,0 +1,42 @@
+{
+    "name": "scriptshare-server",
+    "version": "1.0.0",
+    "description": "ScriptShare API Server",
+    "main": "dist/index.js",
+    "scripts": {
+        "dev": "tsx watch src/index.ts",
+        "build": "tsc",
+        "start": "node dist/index.js",
+        "db:generate": "drizzle-kit generate",
+        "db:push": "drizzle-kit push",
+        "db:studio": "drizzle-kit studio"
+    },
+    "dependencies": {
+        "@cap.js/server": "^4.0.5",
+        "cookie-parser": "^1.4.7",
+        "cors": "^2.8.5",
+        "dotenv": "^17.4.2",
+        "drizzle-orm": "^0.45.2",
+        "express": "^4.21.0",
+        "express-rate-limit": "^8.5.2",
+        "helmet": "^8.2.0",
+        "multer": "^1.4.5-lts.1",
+        "pg": "^8.21.0",
+        "sql.js": "^1.14.1",
+        "ua-parser-js": "^1.0.39"
+    },
+    "devDependencies": {
+        "@types/cookie-parser": "^1.4.10",
+        "@types/cors": "^2.8.17",
+        "@types/express": "^5.0.0",
+        "@types/multer": "^1.4.12",
+        "@types/node": "^25.9.1",
+        "@types/pg": "^8.20.0",
+        "@types/sql.js": "^1.4.11",
+        "@types/tampermonkey": "^5.0.5",
+        "@types/ua-parser-js": "^0.7.39",
+        "drizzle-kit": "^0.31.10",
+        "tsx": "^4.19.0",
+        "typescript": "^5.6.0"
+    }
+}

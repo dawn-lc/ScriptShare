@@ -1,0 +1,22 @@
+{
+    "name": "scriptshare",
+    "version": "1.0.0",
+    "description": "用户脚本分发平台",
+    "private": true,
+    "scripts": {
+        "install:all": "npx concurrently \"npm --prefix server install\" \"npm --prefix client install\"",
+        "dev": "npx concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+        "dev:server": "npm --prefix server run dev",
+        "dev:client": "npm --prefix client run dev",
+        "build": "npx concurrently \"npm --prefix server run build\" \"npm --prefix client run build\"",
+        "build:server": "npm --prefix server run build",
+        "build:client": "npm --prefix client run build",
+        "start": "npm --prefix server run start",
+        "db:generate": "npm --prefix server run db:generate",
+        "db:push": "npm --prefix server run db:push"
+    },
+    "devDependencies": {
+        "concurrently": "^9.1.2",
+        "prettier": "^3.8.3"
+    }
+}
