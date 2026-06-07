@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { getMyStats, type MyStatsResponse } from '../api';
@@ -10,6 +10,7 @@ import { InboxIcon, ChartBarIcon, DocumentTextIcon, ArrowDownTrayIcon, ArrowPath
 export default function MyStats() {
     const { t, i18n } = useTranslation();
     const { isAuthenticated } = useAuth();
+    const navigate = useNavigate();
 
     if (!isAuthenticated) {
         return <Navigate to="/login" state={{ from: '/my-stats' }} replace />;
@@ -96,9 +97,12 @@ export default function MyStats() {
                                 <div className="flex items-center gap-4 text-xs text-gray-400">
                                     <span className="inline-flex items-center gap-1"><ArrowDownTrayIcon className="w-3 h-3" />{s.installs}</span>
                                     <span className="inline-flex items-center gap-1"><ArrowPathIcon className="w-3 h-3" />{s.updateChecks}</span>
-                                    <Link to={`/scripts/${s.id}/stats`} className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 dark:text-primary-300 font-medium">
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); navigate(`/scripts/${s.id}/stats`); }}
+                                        className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 dark:text-primary-300 font-medium cursor-pointer"
+                                    >
                                         {t('myStats.scripts.stats')} <ChevronRightIcon className="w-3 h-3" />
-                                    </Link>
+                                    </button>
                                 </div>
                             </Link>
                         ))}

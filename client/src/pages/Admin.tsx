@@ -26,23 +26,37 @@ export default function Admin() {
     const [loading, setLoading] = useState(true);
 
     const sentinelRef = useRef<HTMLDivElement>(null);
+    const auditContainerRef = useRef<HTMLDivElement>(null);
 
-    // 初始加载
+    // 切换选项卡时刷新对应数据
     useEffect(() => {
         async function load() {
+            setLoading(true);
             try {
-                const [sysData, usersData, logsData, auditData] = await Promise.all([
-                    getAdminSystem(),
-                    getAdminUsers(),
-                    getAdminWebhookLogs(30),
-                    getAdminAuditLogs(AUDIT_PAGE_SIZE, 0),
-                ]);
-                setSys(sysData);
-                setUsers(usersData.users);
-                setLogs(logsData.logs);
-                setAuditLogs(auditData.logs);
-                setAuditTotal(auditData.total);
-                setAuditHasMore(auditData.hasMore);
+                switch (tab) {
+                    case 'overview': {
+                        const [sysData] = await Promise.all([getAdminSystem()]);
+                        setSys(sysData);
+                        break;
+                    }
+                    case 'users': {
+                        const usersData = await getAdminUsers();
+                        setUsers(usersData.users);
+                        break;
+                    }
+                    case 'webhook': {
+                        const logsData = await getAdminWebhookLogs(30);
+                        setLogs(logsData.logs);
+                        break;
+                    }
+                    case 'audit': {
+                        const auditData = await getAdminAuditLogs(AUDIT_PAGE_SIZE, 0);
+                        setAuditLogs(auditData.logs);
+                        setAuditTotal(auditData.total);
+                        setAuditHasMore(auditData.hasMore);
+                        break;
+                    }
+                }
             } catch (err: unknown) {
                 console.error(t('common.error'), err);
             } finally {
@@ -50,7 +64,7 @@ export default function Admin() {
             }
         }
         load();
-    }, []);
+    }, [tab]);
 
     // 加载更多审计日志
     const loadMoreAuditLogs = useCallback(async () => {
@@ -67,11 +81,12 @@ export default function Admin() {
         }
     }, [auditLoadingMore, auditHasMore, auditLogs.length]);
 
-    // IntersectionObserver 监听滚动到底部
+    // IntersectionObserver 监听日志容器内滚动到底部
     useEffect(() => {
         if (tab !== 'audit') return;
         const sentinel = sentinelRef.current;
-        if (!sentinel) return;
+        const container = auditContainerRef.current;
+        if (!sentinel || !container) return;
 
         const observer = new IntersectionObserver(
             (entries) => {
@@ -79,11 +94,11 @@ export default function Admin() {
                     loadMoreAuditLogs();
                 }
             },
-            { rootMargin: '200px' }
+            { root: container, rootMargin: '200px' }
         );
         observer.observe(sentinel);
         return () => observer.disconnect();
-    }, [tab, loadMoreAuditLogs]);
+    }, [tab, loadMoreAuditLogs, auditLogs]); // auditLogs 确保数据加载完容器渲染后再创建 observer
 
     if (loading) {
         return (
@@ -278,26 +293,28 @@ export default function Admin() {
 
             {/* Audit logs tab */}
             {tab === 'audit' && (
-                <div className="card">
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-1.5">
-                        <ClipboardDocumentListIcon className="w-5 h-5" />
-                        {t('admin.audit.title', { count: auditTotal })}
-                    </h3>
+                <div className="card p-0 overflow-hidden">
+                    <div className="px-6 pt-5 pb-3 border-b border-gray-200 dark:border-gray-700">
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                            <ClipboardDocumentListIcon className="w-5 h-5" />
+                            {t('admin.audit.title', { count: auditTotal })}
+                        </h3>
+                    </div>
                     {auditLogs.length === 0 ? (
-                        <p className="text-sm text-gray-400 py-4 text-center">{t('admin.audit.empty')}</p>
+                        <p className="text-sm text-gray-400 py-6 text-center">{t('admin.audit.empty')}</p>
                     ) : (
-                        <div className="overflow-x-auto">
+                        <div ref={auditContainerRef} className="overflow-x-auto overflow-y-auto max-h-[65vh]">
                             <table className="w-full text-sm">
                                 <thead>
-                                    <tr className="border-b border-gray-200 dark:border-gray-700 text-left text-gray-500 dark:text-gray-400">
-                                        <th className="pb-2 pr-4 font-medium">{t('admin.audit.time')}</th>
-                                        <th className="pb-2 pr-4 font-medium">{t('admin.audit.user')}</th>
-                                        <th className="pb-2 pr-4 font-medium">{t('admin.audit.action')}</th>
-                                        <th className="pb-2 font-medium">{t('admin.audit.detail')}</th>
+                                    <tr className="sticky top-0 z-10 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-left text-gray-500 dark:text-gray-400">
+                                        <th className="py-3 px-6 font-medium text-xs uppercase tracking-wider">{t('admin.audit.time')}</th>
+                                        <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">{t('admin.audit.user')}</th>
+                                        <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">{t('admin.audit.action')}</th>
+                                        <th className="py-3 pr-6 font-medium text-xs uppercase tracking-wider">{t('admin.audit.detail')}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {auditLogs.map((entry) => {
+                                    {auditLogs.map((entry, idx) => {
                                         const actionColor =
                                             entry.action.startsWith('user.') ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' :
                                                 entry.action.startsWith('script.') ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400' :
@@ -305,19 +322,19 @@ export default function Admin() {
                                                         entry.action.startsWith('webhook.') ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' :
                                                             'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300';
                                         return (
-                                            <tr key={entry.id} className="border-b border-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800 dark:bg-gray-800">
-                                                <td className="py-2 pr-4 text-gray-500 dark:text-gray-400 whitespace-nowrap text-xs">
+                                            <tr key={entry.id} className={`${idx % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800/50'} hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}>
+                                                <td className="py-2.5 px-6 text-gray-500 dark:text-gray-400 whitespace-nowrap text-xs">
                                                     {new Date(entry.createdAt).toLocaleString('zh-CN')}
                                                 </td>
-                                                <td className="py-2 pr-4 text-gray-700 dark:text-gray-200">
+                                                <td className="py-2.5 pr-4 text-gray-700 dark:text-gray-200 text-xs">
                                                     {entry.userName || <span className="text-gray-400">—</span>}
                                                 </td>
-                                                <td className="py-2 pr-4">
+                                                <td className="py-2.5 pr-4">
                                                     <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${actionColor}`}>
                                                         {entry.action}
                                                     </span>
                                                 </td>
-                                                <td className="py-2 text-gray-600 dark:text-gray-300 text-xs max-w-xs truncate" title={entry.detail}>
+                                                <td className="py-2.5 pr-6 text-gray-600 dark:text-gray-300 text-xs max-w-xs truncate" title={entry.detail}>
                                                     {entry.detail}
                                                 </td>
                                             </tr>
@@ -327,7 +344,7 @@ export default function Admin() {
                             </table>
 
                             {/* Infinite scroll sentinel */}
-                            <div ref={sentinelRef} className="flex items-center justify-center py-4">
+                            <div ref={sentinelRef} className="flex items-center justify-center py-4 border-t border-gray-100 dark:border-gray-800">
                                 {auditLoadingMore ? (
                                     <div className="flex items-center gap-2 text-sm text-gray-400">
                                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>

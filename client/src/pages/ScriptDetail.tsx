@@ -165,14 +165,14 @@ export default function ScriptDetail() {
                     <div className="flex items-start gap-4">
                         <ScriptIcon icon={script.icon} size={56} />
                         <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start justify-between gap-4 flex-wrap">
                                 <div>
                                     <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{getLocalizedText(script.i18n, 'name', i18n.language, script.name)}</h1>
                                     {script.description && <p className="text-gray-500 dark:text-gray-400 mt-1 line-clamp-3" title={getLocalizedText(script.i18n, 'description', i18n.language, script.description)}>{getLocalizedText(script.i18n, 'description', i18n.language, script.description)}</p>}
                                 </div>
-                                <div className="flex items-center gap-2 flex-shrink-0">
+                                <div className="flex items-center gap-2 flex-shrink-0 flex-wrap sm:flex-nowrap">
                                     <button
-                                        className="btn-secondary"
+                                        className="btn-secondary text-xs sm:text-sm"
                                         onClick={() => {
                                             const url = window.location.href;
                                             navigator.clipboard.writeText(url).then(() => {
@@ -184,17 +184,17 @@ export default function ScriptDetail() {
                                     </button>
                                     {isAuthenticated && (user?.role === 'admin' || user?.id === script.userId) && (
                                         <>
-                                            <Link to={`/scripts/${script.id}/stats`} className="btn-secondary">
+                                            <Link to={`/scripts/${script.id}/stats`} className="btn-secondary text-xs sm:text-sm">
                                                 <ChartBarIcon className="w-4 h-4 mr-1" />{t('scriptDetail.stats')}
                                             </Link>
-                                            <Link to={`/scripts/${script.id}/edit`} className="btn-secondary">
+                                            <Link to={`/scripts/${script.id}/edit`} className="btn-secondary text-xs sm:text-sm">
                                                 <PencilIcon className="w-4 h-4 mr-1" />{t('scriptDetail.edit')}
                                             </Link>
-                                            <Link to={`/scripts/${script.id}/settings`} className="btn-secondary">
+                                            <Link to={`/scripts/${script.id}/settings`} className="btn-secondary text-xs sm:text-sm">
                                                 <Cog6ToothIcon className="w-4 h-4 mr-1" />{t('scriptDetail.settings')}
                                             </Link>
                                             <div className="w-px h-6 bg-gray-200 dark:bg-gray-700" />
-                                            <button className="btn-danger" onClick={handleDelete} disabled={deleting}>
+                                            <button className="btn-danger text-xs sm:text-sm" onClick={handleDelete} disabled={deleting}>
                                                 {deleting ? t('scriptDetail.deleting') : <><TrashIcon className="w-4 h-4 mr-1" />{t('scriptDetail.delete')}</>}
                                             </button>
                                         </>
