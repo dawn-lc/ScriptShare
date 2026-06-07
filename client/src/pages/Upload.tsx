@@ -2,8 +2,8 @@ import { useState, useRef, useCallback } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
-import { createScript } from '../api';
-import { BookOpen, Clipboard, X, Upload as UploadIcon, FileUp, FileCheck } from 'lucide-react';
+import { createScript, ApiError, type MetadataWarning } from '../api';
+import { BookOpenIcon, ClipboardIcon, XMarkIcon, ArrowUpTrayIcon, ArrowUpOnSquareIcon, DocumentCheckIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 
 const ACCEPTED_EXTENSIONS = ['.js', '.user.js', '.txt'];
 
@@ -22,6 +22,8 @@ export default function Upload() {
     const [error, setError] = useState('');
     const [isDragging, setIsDragging] = useState(false);
     const [dragError, setDragError] = useState('');
+    const [warnings, setWarnings] = useState<MetadataWarning[] | null>(null);
+    const [uploadedScriptId, setUploadedScriptId] = useState<number | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const dragCounter = useRef(0);
 
@@ -38,7 +40,7 @@ export default function Upload() {
 (function() {
     'use strict';
 
-    // Your code starts here
+    // 你的代码从这里开始
 
 })();`;
 
@@ -52,7 +54,8 @@ export default function Upload() {
         setDragError('');
         const reader = new FileReader();
         reader.onload = (event) => {
-            const content = event.target?.result as string;
+            // FileReader.result 类型为 string | ArrayBuffer | null
+            const content = typeof event.target?.result === 'string' ? event.target.result : '';
             setCode(content);
         };
         reader.onerror = () => {
@@ -118,7 +121,7 @@ export default function Upload() {
             return;
         }
 
-        // Basic validation: check for @name
+        // 基本校验：检查 @name
         if (!code.includes('// @name')) {
             setError(t('upload.error.noName'));
             return;
@@ -127,18 +130,28 @@ export default function Upload() {
         setUploading(true);
         try {
             const result = await createScript(code, filename || undefined, readme || undefined);
-            navigate(`/scripts/${result.script.id}`, { replace: true });
-        } catch (err: any) {
-            setError(t('upload.error.fail', { msg: err.message }));
-        } finally {
+            setUploadedScriptId(result.script.id);
+            if (result.warnings && result.warnings.length > 0) {
+                setWarnings(result.warnings);
+                setUploading(false);
+            } else {
+                navigate(`/scripts/${result.script.id}`, { replace: true });
+            }
+        } catch (err: unknown) {
+            if (err instanceof ApiError && err.details && err.details.length > 0) {
+                setError(`${t('upload.error.metaIncomplete')}\n${err.details.join('\n')}`);
+            } else {
+                const msg = err instanceof Error ? err.message : String(err);
+                setError(t('upload.error.fail', { msg }));
+            }
             setUploading(false);
         }
     }
 
     return (
-        <div className="space-y-6 max-w-4xl mx-auto">
+        <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100"><UploadIcon className="w-6 h-6 inline-block mr-2" />{t('upload.title')}</h1>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><ArrowUpTrayIcon className="w-6 h-6" />{t('upload.title')}</h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                     {t('upload.desc')}
                 </p>
@@ -179,9 +192,9 @@ export default function Upload() {
                         {/* Icon */}
                         <div className={`mb-3 transition-transform duration-200 ${isDragging ? 'scale-110' : ''}`}>
                             {filename ? (
-                                <FileCheck className="w-10 h-10 text-green-500" />
+                                <DocumentCheckIcon className="w-10 h-10 text-green-500" />
                             ) : (
-                                <FileUp className={`w-10 h-10 ${isDragging ? 'text-primary-500' : 'text-gray-400'}`} />
+                                <ArrowUpOnSquareIcon className={`w-10 h-10 ${isDragging ? 'text-primary-500' : 'text-gray-400'}`} />
                             )}
                         </div>
 
@@ -221,7 +234,7 @@ export default function Upload() {
                             className="btn-ghost"
                             onClick={() => setCode(template)}
                         >
-                            <Clipboard className="w-4 h-4 inline-block mr-1" />{t('upload.code.template')}
+                            <ClipboardIcon className="w-4 h-4 mr-1" />{t('upload.code.template')}
                         </button>
                     </div>
                     <textarea
@@ -239,7 +252,7 @@ export default function Upload() {
                 {/* Readme (Markdown) */}
                 <div className="card">
                     <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100"><BookOpen className="w-4 h-4 inline-block mr-1" />{t('upload.readme.title')}</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5"><BookOpenIcon className="w-4 h-4" />{t('upload.readme.title')}</h3>
                     </div>
                     <textarea
                         value={readme}
@@ -253,8 +266,8 @@ export default function Upload() {
 
                 {/* Error message */}
                 {error && (
-                    <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
-                        <X className="w-4 h-4 inline-block mr-1" />{error}
+                    <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm whitespace-pre-line">
+                        <XMarkIcon className="w-4 h-4 mr-1" />{error}
                     </div>
                 )}
 
@@ -270,12 +283,61 @@ export default function Upload() {
                                 {t('upload.submitting')}
                             </>
                         ) : (
-                            <><UploadIcon className="w-5 h-5 inline-block mr-2" />{t('upload.submit')}</>
+                            <><ArrowUpTrayIcon className="w-5 h-5 mr-2" />{t('upload.submit')}</>
                         )}
                     </button>
                 </div>
             </form>
 
+            {/* 元数据检测警告 */}
+            {warnings && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ marginTop: 0 }}>
+                    <div className="absolute inset-0 bg-black/40" onClick={() => { setWarnings(null); navigate('/scripts', { replace: true }); }} />
+                    <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-xl p-6 w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto">
+                        <div className="flex items-center gap-2 mb-4">
+                            <ExclamationTriangleIcon className="w-6 h-6 text-amber-500" />
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                                {t('upload.warnings.title')}
+                            </h3>
+                        </div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                            {t('upload.warnings.desc')}
+                        </p>
+                        <div className="space-y-2 mb-6">
+                            {warnings.map((w, i) => (
+                                <div key={i} className={`flex items-start gap-2 p-3 rounded-lg text-sm ${w.type === 'security'
+                                    ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
+                                    : w.type === 'missing'
+                                        ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300'
+                                        : 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+                                    }`}>
+                                    <InformationCircleIcon className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                    <div>
+                                        <span className="font-medium">@{w.field}: </span>
+                                        {w.message}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={() => { setWarnings(null); navigate('/scripts', { replace: true }); }}
+                            >
+                                {t('upload.warnings.backToList')}
+                            </button>
+                            <button
+                                type="button"
+                                className="btn-primary"
+                                onClick={() => { setWarnings(null); navigate(`/scripts/${uploadedScriptId}`, { replace: true }); }}
+                            >
+                                {t('upload.warnings.continue')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

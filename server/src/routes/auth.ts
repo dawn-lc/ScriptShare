@@ -1,38 +1,40 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../db';
-import { users, scripts } from '../db';
-import { eq, count } from 'drizzle-orm';
-import { requireAuth, createUserToken, verifyToken, hashPassword, verifyPassword, getCurrentUser } from '../middleware/auth';
+import { users, scripts, capTokens } from '../db';
+import { eq, and, gt, count, sql } from 'drizzle-orm';
+import { requireAuth, createUserToken, verifyToken, renewTokenIfNeeded, hashPassword, verifyPassword, getCurrentUser, AuthPayload } from '../middleware/auth';
+import crypto from 'crypto';
 import { sanitizeField, FIELD_LIMITS } from '../utils/validate';
 import { audit } from '../utils/audit';
-import { logVisitorEvent } from '../utils/risk';
 import cap from '../utils/cap';
-import { isProd } from '../config';
+import { isProd, MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION_MS, ATTEMPT_WINDOW_MS } from '../config';
+import { getClientIp, hashIP } from '../utils/ip';
 
 const router = Router();
 
-// ── Register ──
+// ── 注册 ──
 
-// POST /api/auth/register - Create a new account (requires captcha)
+// POST /api/auth/register - 创建新账号（需要验证码）
 router.post('/register', async (req: Request, res: Response) => {
-    const { username, password, displayName: display_name, captchaToken: captcha_token, captchaAnswer: captcha_answer, envScore: env_score, envLabel: env_label, isBot: is_bot, visitorId: visitor_id, fpConfidence: fp_confidence } = req.body;
+    const { username, password, displayName: display_name, captchaToken: captcha_token } = req.body;
 
-    // Verify Cap token (skip for first-ever registration for convenience)
-    const [{ count: userCount }] = db.select({ count: count() }).from(users).all();
-    if (userCount > 0) {
-        // captcha_token is the Cap verification token, captcha_answer is unused
-        const capToken = captcha_token || req.body.cap_token;
-        if (!capToken) {
-            res.status(400).json({ error: '请完成验证码', code: 'CAPTCHA_REQUIRED' });
-            return;
-        }
-        const result = await cap.validateToken(capToken);
-        if (!result.success) {
-            res.status(400).json({ error: '验证码错误', code: 'CAPTCHA_WRONG' });
-            return;
-        }
-        // Consume token (one-time use) - we don't delete it here to avoid race conditions;
-        // validateToken already checks and the token expires naturally
+    // 验证 Cap token（管理员初始化后所有注册都需要验证码）
+    if (!captcha_token && !req.body.cap_token) {
+        res.status(400).json({ error: '请完成验证码', code: 'CAPTCHA_REQUIRED' });
+        return;
+    }
+    const capToken = captcha_token || req.body.cap_token;
+
+    // 原子操作：DELETE + 过期检查合并为一条 SQL，消除竞态条件
+    const delResult = db.delete(capTokens)
+        .where(and(
+            eq(capTokens.key, capToken),
+            gt(capTokens.expires, Date.now()),
+        )).run() as { changes?: number; rowCount?: number };
+    const affected = delResult.changes ?? delResult.rowCount ?? 0;
+    if (affected === 0) {
+        res.status(400).json({ error: '验证码错误或已使用', code: 'CAPTCHA_WRONG' });
+        return;
     }
 
     if (!username || typeof username !== 'string') {
@@ -50,7 +52,7 @@ router.post('/register', async (req: Request, res: Response) => {
         return;
     }
 
-    // Check duplicate
+    // 检查重名
     const existing = db.select({ id: users.id }).from(users).where(eq(users.username, safeName)).get();
     if (existing) {
         res.status(409).json({ error: '用户名已被使用' });
@@ -60,40 +62,19 @@ router.post('/register', async (req: Request, res: Response) => {
     const hash = hashPassword(password);
     const display = sanitizeField(display_name || safeName, 100);
 
-    // First user to register becomes admin
-    const role = userCount === 0 ? 'admin' : 'user';
-
-    // Store environment detection info
-    const envInfo = JSON.stringify({
-        score: typeof env_score === 'number' ? env_score : null,
-        label: typeof env_label === 'string' ? env_label : '',
-        isBot: is_bot === true,
-        visitorId: typeof visitor_id === 'string' ? visitor_id : null,
-        fpConfidence: typeof fp_confidence === 'number' ? fp_confidence : null,
-        detectedAt: new Date().toISOString(),
-    });
-
-    // Log registration attempt for visitor risk tracking
-    if (typeof visitor_id === 'string') {
-        logVisitorEvent({
-            visitorId: visitor_id,
-            action: 'register_attempt',
-            envScore: typeof env_score === 'number' ? env_score : undefined,
-            fpConfidence: typeof fp_confidence === 'number' ? fp_confidence : undefined,
-            metadata: { username: safeName, role },
-        });
-    }
+    const role: 'admin' | 'user' = 'user';
+    const tokenNonce = crypto.randomBytes(8).toString('hex');
 
     const [user] = await (db.insert(users).values({
         username: safeName,
         displayName: display,
         passwordHash: hash,
         role,
-        envInfo,
+        tokenNonce,
     }).returning({
         id: users.id, username: users.username, displayName: users.displayName,
-        role: users.role, avatarUrl: users.avatarUrl, createdAt: users.createdAt,
-    }) as any);
+        role: users.role, avatarUrl: users.avatarUrl, tokenNonce: users.tokenNonce, createdAt: users.createdAt,
+    }));
 
     const token = createUserToken(user);
 
@@ -101,7 +82,7 @@ router.post('/register', async (req: Request, res: Response) => {
         httpOnly: true,
         sameSite: 'lax',
         secure: isProd,
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 24 * 60 * 60 * 1000,
         path: '/',
     });
 
@@ -110,26 +91,42 @@ router.post('/register', async (req: Request, res: Response) => {
         user: { id: user.id, username: user.username, displayName: user.displayName, role: user.role },
     });
 
-    // Audit: registration
-    audit('user.register', user.id, `用户注册: ${safeName}`, {
-        role,
-        envScore: typeof env_score === 'number' ? env_score : null,
-        envLabel: typeof env_label === 'string' ? env_label : null,
-        isBot: is_bot === true,
-        visitorId: typeof visitor_id === 'string' ? visitor_id : null,
-        fpConfidence: typeof fp_confidence === 'number' ? fp_confidence : null,
-    });
+    // 审计：注册
+    audit('user.register', user.id, `用户注册: ${safeName}`, { role });
 });
 
-// ── Login ──
+/**
+ * 通过环境变量 ADMIN_USERNAME/ADMIN_PASSWORD 创建管理员账号。
+ * 若该用户已存在则跳过，幂等安全。
+ */
+export async function ensureAdmin(username: string, password: string): Promise<void> {
+    const existing = db.select({ id: users.id }).from(users).where(eq(users.username, username)).get();
+    if (existing) {
+        console.log(`👤 管理员 "${username}" 已存在，跳过初始化`);
+        return;
+    }
 
-// In-memory login attempt tracking: username → { count, lockedUntil }
+    const hash = hashPassword(password);
+    const tokenNonce = crypto.randomBytes(8).toString('hex');
+
+    db.insert(users).values({
+        username,
+        displayName: username,
+        passwordHash: hash,
+        role: 'admin',
+        tokenNonce,
+    }).run();
+
+    console.log(`👑 管理员账号 "${username}" 已通过环境变量创建`);
+    audit('admin.action', null, `管理员账号已通过环境变量初始化: ${username}`);
+}
+
+// ── 登录 ──
+
+// 内存中登录尝试追踪：username → { count, lockedUntil }
 const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
-const MAX_LOGIN_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
-const ATTEMPT_WINDOW_MS = 30 * 60 * 1000; // reset counter after 30 min of no activity
 
-// Cleanup stale entries periodically
+// 定期清理过期条目
 setInterval(() => {
     const now = Date.now();
     for (const [key, val] of loginAttempts) {
@@ -139,7 +136,7 @@ setInterval(() => {
     }
 }, 60 * 1000).unref();
 
-// POST /api/auth/login - Login with username & password
+// POST /api/auth/login - 使用用户名和密码登录
 router.post('/login', (req: Request, res: Response) => {
     const { username, password } = req.body;
 
@@ -148,32 +145,41 @@ router.post('/login', (req: Request, res: Response) => {
         return;
     }
 
-    // Check account lockout
-    const key = `login:${username}`;
+    // 检查账号锁定（key 绑定 IP+用户名，防止恶意用户锁定他人账号）
+    const clientIp = getClientIp(req);
+    const key = `login:${hashIP(clientIp)}:${username}`;
     const attempt = loginAttempts.get(key);
     const now = Date.now();
     if (attempt && now < attempt.lockedUntil) {
         const remaining = Math.ceil((attempt.lockedUntil - now) / 1000 / 60);
         res.status(429).json({ error: `登录尝试过于频繁，请 ${remaining} 分钟后再试`, code: 'LOGIN_LOCKED' });
+        audit('user.login', null, `登录失败: 账号 ${username} 已被锁定 ${remaining} 分钟`, { username, reason: 'locked', remainingMinutes: remaining });
         return;
     }
 
-    const user = db.select().from(users).where(eq(users.username, username)).get() as any;
+    const user = db.select().from(users).where(eq(users.username, username)).get();
     if (!user || !verifyPassword(password, user.passwordHash)) {
-        // Record failed attempt
+        // 记录失败尝试
+        const willLock = attempt && attempt.count + 1 >= MAX_LOGIN_ATTEMPTS;
         if (attempt && now < attempt.lockedUntil + ATTEMPT_WINDOW_MS) {
             attempt.count++;
             if (attempt.count >= MAX_LOGIN_ATTEMPTS) {
                 attempt.lockedUntil = now + LOCKOUT_DURATION_MS;
             }
         } else {
-            loginAttempts.set(key, { count: 1, lockedUntil: now + LOCKOUT_DURATION_MS });
+            // 首次失败：lockedUntil 设为 now（不锁定），仅在达到最大次数后才锁定
+            loginAttempts.set(key, { count: 1, lockedUntil: now });
         }
         res.status(403).json({ error: '用户名或密码错误' });
+        if (willLock) {
+            audit('user.login', null, `登录失败: 账号 ${username} 已达最大尝试次数，已锁定 15 分钟`, { username, reason: 'locked', maxAttempts: MAX_LOGIN_ATTEMPTS });
+        } else {
+            audit('user.login', null, `登录失败: 用户名或密码错误 (${username})`, { username, reason: 'wrong_credentials', attemptCount: (attempt?.count ?? 1) });
+        }
         return;
     }
 
-    // Successful login — clear attempt tracking
+    // 登录成功 — 清除尝试记录
     loginAttempts.delete(key);
 
     const token = createUserToken(user);
@@ -182,7 +188,7 @@ router.post('/login', (req: Request, res: Response) => {
         httpOnly: true,
         sameSite: 'lax',
         secure: isProd,
-        maxAge: 7 * 24 * 60 * 60 * 1000,
+        maxAge: 24 * 60 * 60 * 1000,
         path: '/',
     });
 
@@ -191,42 +197,41 @@ router.post('/login', (req: Request, res: Response) => {
         user: { id: user.id, username: user.username, displayName: user.displayName, role: user.role, avatarUrl: user.avatarUrl },
     });
 
-    // Audit: login
+    // 审计：登录
     audit('user.login', user.id, `用户登录: ${user.username}`);
 });
 
-// ── Logout ──
+// ── 登出 ──
 
-// POST /api/auth/logout
-router.post('/logout', (_req: Request, res: Response) => {
+// POST /api/auth/logout - 登出（使 token 失效）
+router.post('/logout', requireAuth, (req: Request, res: Response) => {
+    // 递增 tokenNonce 使该用户的所有现有 token 失效
+    const payload = getCurrentUser(req)!;
+    db.update(users).set({
+        tokenNonce: crypto.randomBytes(8).toString('hex'),
+    }).where(eq(users.id, payload.userId!)).run();
+
     res.clearCookie('session_token', { path: '/' });
     res.json({ message: '已退出登录' });
+
+    // 审计：登出
+    audit('user.logout', payload.userId!, `用户登出: ${payload.username}`);
 });
 
-// ── Status & Profile ──
+// ── 状态与个人资料 ──
 
-// GET /api/auth/status - Check auth status & return current user
-// Only includes `hasUsers: false` when no users exist (for first-registration warning).
-// Once any user is registered, `hasUsers` is omitted to avoid leaking info.
+// GET /api/auth/status - 检查登录状态并返回当前用户
 router.get('/status', (_req: Request, res: Response) => {
-    const [{ count: userCount }] = db.select({ count: count() }).from(users).all();
-    const isFirstUser = userCount === 0;
-
     const token = _req.cookies?.session_token;
-    const base: Record<string, any> = {};
-
-    if (!isFirstUser) {
-        base.hasUsers = true;
-    }
 
     if (!token) {
-        res.json({ authenticated: false, user: null, ...(isFirstUser ? { hasUsers: false } : {}) });
+        res.json({ authenticated: false, user: null });
         return;
     }
 
     const payload = verifyToken(token);
     if (!payload || !payload.userId) {
-        res.json({ authenticated: false, user: null, ...(isFirstUser ? { hasUsers: false } : {}) });
+        res.json({ authenticated: false, user: null });
         return;
     }
 
@@ -236,40 +241,42 @@ router.get('/status', (_req: Request, res: Response) => {
     }).from(users).where(eq(users.id, payload.userId)).get();
 
     if (!user) {
-        res.json({ authenticated: false, user: null, ...(isFirstUser ? { hasUsers: false } : {}) });
+        res.json({ authenticated: false, user: null });
         return;
     }
+
+    // token 即将过期时续期（滚动会话）
+    renewTokenIfNeeded(payload, res);
 
     res.json({
         authenticated: true,
         user: { id: user.id, username: user.username, displayName: user.displayName, role: user.role, avatarUrl: user.avatarUrl },
-        ...(isFirstUser ? { hasUsers: false } : {}),
     });
 });
 
-// GET /api/auth/me - Get current user profile (requires auth)
+// GET /api/auth/me - 获取当前用户资料（需已登录）
 router.get('/me', requireAuth, (req: Request, res: Response) => {
     const current = getCurrentUser(req)!;
     const userId = current.userId!;
     const user = db.select({
         id: users.id, username: users.username, displayName: users.displayName,
         role: users.role, avatarUrl: users.avatarUrl, createdAt: users.createdAt,
-    }).from(users).where(eq(users.id, userId)).get() as any;
+    }).from(users).where(eq(users.id, userId)).get();
 
-    // Count user's scripts
+    // 统计用户的脚本数
     const [{ count: scriptCount }] = db.select({ count: count() }).from(scripts)
         .where(eq(scripts.userId, userId)).all();
 
     res.json({ user: { ...user, scriptCount: scriptCount } });
 });
 
-// PUT /api/auth/me - Update current user profile (requires auth)
+// PUT /api/auth/me - 更新当前用户资料（需已登录）
 router.put('/me', requireAuth, (req: Request, res: Response) => {
     const current = getCurrentUser(req)!;
     const userId = current.userId!;
     const { displayName } = req.body;
 
-    const updateData: any = {};
+    const updateData: Record<string, string> = {};
     if (displayName !== undefined) {
         const safeName = sanitizeField(displayName, 50);
         updateData.displayName = safeName;
@@ -286,7 +293,7 @@ router.put('/me', requireAuth, (req: Request, res: Response) => {
     const updated = db.select({
         id: users.id, username: users.username, displayName: users.displayName,
         role: users.role, avatarUrl: users.avatarUrl, createdAt: users.createdAt,
-    }).from(users).where(eq(users.id, userId)).get() as any;
+    }).from(users).where(eq(users.id, userId)).get();
 
     const [{ count: scriptCount }] = db.select({ count: count() }).from(scripts)
         .where(eq(scripts.userId, userId)).all();
@@ -294,7 +301,7 @@ router.put('/me', requireAuth, (req: Request, res: Response) => {
     res.json({ user: { ...updated, scriptCount } });
 });
 
-// POST /api/auth/change-password - Change password (requires auth)
+// POST /api/auth/change-password - 修改密码（需已登录）
 router.post('/change-password', requireAuth, (req: Request, res: Response) => {
     const current = getCurrentUser(req)!;
     const userId = current.userId!;
@@ -310,7 +317,7 @@ router.post('/change-password', requireAuth, (req: Request, res: Response) => {
     }
 
     const user = db.select({ passwordHash: users.passwordHash })
-        .from(users).where(eq(users.id, userId)).get() as any;
+        .from(users).where(eq(users.id, userId)).get();
     if (!user) {
         res.status(404).json({ error: '用户不存在' });
         return;
@@ -328,9 +335,9 @@ router.post('/change-password', requireAuth, (req: Request, res: Response) => {
     res.json({ message: '密码已更新' });
 });
 
-// GET /api/users/:id - View a user's public profile
+// GET /api/users/:id - 查看用户的公开资料
 router.get('/users/:id', (req: Request, res: Response) => {
-    const id = parseInt(req.params.id as string);
+    const id = parseInt(String(req.params.id));
     if (isNaN(id)) {
         res.status(400).json({ error: '无效的用户 ID' });
         return;
@@ -339,7 +346,7 @@ router.get('/users/:id', (req: Request, res: Response) => {
     const user = db.select({
         id: users.id, username: users.username, displayName: users.displayName,
         avatarUrl: users.avatarUrl, createdAt: users.createdAt,
-    }).from(users).where(eq(users.id, id)).get() as any;
+    }).from(users).where(eq(users.id, id)).get();
     if (!user) {
         res.status(404).json({ error: '用户不存在' });
         return;

@@ -1,12 +1,12 @@
 /**
- * Cap CAPTCHA solver.
- * Directly solves challenges from @cap.js/server without using the cap-widget.
+ * Cap CAPTCHA 求解器。
+ * 直接求解 @cap.js/server 的 PoW 挑战，不使用 cap-widget。
  */
 
 const CAP_API = `${window.location.origin}/api/cap/`;
 
 /**
- * FNV-1a hash (32-bit), matching @cap.js/server's prng implementation.
+ * FNV-1a 哈希（32 位），与 @cap.js/server 的 prng 实现一致。
  */
 function fnv1a(str: string): number {
     let hash = 2166136261;
@@ -18,7 +18,7 @@ function fnv1a(str: string): number {
 }
 
 /**
- * Deterministic hex string generator, matching @cap.js/server's prng.
+ * 确定性十六进制字符串生成器，与 @cap.js/server 的 prng 一致。
  */
 function prng(seed: string, length: number): string {
     let state = fnv1a(seed);
@@ -38,7 +38,7 @@ function prng(seed: string, length: number): string {
 }
 
 /**
- * SHA-256 hash of a string (hex output).
+ * SHA-256 哈希（十六进制输出）。
  */
 async function sha256(msg: string): Promise<string> {
     const encoder = new TextEncoder();
@@ -50,7 +50,7 @@ async function sha256(msg: string): Promise<string> {
 }
 
 /**
- * Generate the array of [salt, target] pairs for a challenge.
+ * 生成一组 [salt, target] 子挑战。
  */
 function generateSubChallenges(token: string, c: number, s: number, d: number): [string, string][] {
     const challenges: [string, string][] = [];
@@ -63,32 +63,32 @@ function generateSubChallenges(token: string, c: number, s: number, d: number): 
 }
 
 /**
- * Solve a single sub-challenge: find a nonce where SHA256(salt + nonce) starts with target.
- * With target="", any nonce works (returns 0 instantly). 
- * Yields to event loop every YIELD_INTERVAL hashes to keep UI responsive.
+ * 求解单个子挑战：找到 nonce，使得 SHA256(salt + nonce) 以 target 开头。
+ * target="" 时任何 nonce 都有效（立即返回 0）。
+ * 每 YIELD_INTERVAL 次哈希让出事件循环以保持 UI 响应。
  */
 const YIELD_INTERVAL = 2000;
 
 async function solveSubChallenge(salt: string, target: string): Promise<number> {
-    if (!target) return 0; // empty target means any nonce is valid
+    if (!target) return 0; // target 为空时任意 nonce 都有效
 
-    // For higher difficulty, increase max attempts adaptively
-    // target length = d (number of hex chars), effective bits = d * 4
+    // 高难度时自适应增加最大尝试次数
+    // target 长度 = d（十六进制字符数），有效位数 = d * 4
     const bits = target.length * 4;
     const expectedAttempts = Math.pow(2, bits);
     const maxAttempts = Math.max(500000, Math.min(Math.round(expectedAttempts * 3), 5000000));
 
-    // Try numeric nonces (most common)
+    // 优先尝试数值 nonce（最常见）
     for (let nonce = 0; nonce < maxAttempts; nonce++) {
         const hash = await sha256(salt + nonce);
         if (hash.startsWith(target)) return nonce;
-        // Yield to event loop periodically so UI stays responsive
+        // 定期让出事件循环，保持 UI 响应
         if (nonce > 0 && nonce % YIELD_INTERVAL === 0) {
             await new Promise((r) => setTimeout(r, 0));
         }
     }
 
-    // Fallback: try string nonces
+    // 兜底：尝试字符串 nonce
     for (let nonce = 0; nonce < maxAttempts; nonce++) {
         const hash = await sha256(salt + 'n' + nonce.toString(16));
         if (hash.startsWith(target)) return nonce;
@@ -97,55 +97,44 @@ async function solveSubChallenge(salt: string, target: string): Promise<number> 
         }
     }
 
-    throw new Error(`Failed to solve challenge with target "${target}" (bits=${bits}, max=${maxAttempts})`);
+    throw new Error(`无法求解挑战 target="${target}" (bits=${bits}, max=${maxAttempts})`);
 }
 
 /**
- * Fetch a challenge from the server, solve it, and redeem for a token.
+ * 从服务器获取挑战、求解并兑换为验证 token。
  *
- * @param envScore - Optional environment suspicion score
- * @param onProgress - Optional progress callback (0-100)
- * @param visitorId - Optional FingerprintJS visitor ID for server-side tracking
- * @param fpConfidence - Optional FingerprintJS confidence score
- * @returns The verification token
+ * @param onProgress - 可选的进度回调（0-100）
+ * @returns 验证 token
  */
 export async function solveCapChallenge(
-    envScore?: number,
     onProgress?: (pct: number) => void,
-    visitorId?: string,
-    fpConfidence?: number,
 ): Promise<string> {
-    // Step 1: Get challenge
-    const params = new URLSearchParams();
-    if (envScore !== undefined) params.set('envScore', String(envScore));
-    if (visitorId) params.set('visitorId', visitorId);
-    if (fpConfidence !== undefined) params.set('fpConfidence', String(fpConfidence));
-    const qs = params.toString();
-    const challengeResp = await fetch(`${CAP_API}challenge${qs ? `?${qs}` : ''}`, { method: 'POST' });
+    // 第 1 步：获取挑战
+    const challengeResp = await fetch(`${CAP_API}challenge`, { method: 'POST' });
     const challengeData = await challengeResp.json();
 
     const { challenge, token } = challengeData;
     const { c, s, d } = challenge;
 
-    // Step 2: Generate sub-challenges
+    // 第 2 步：生成子挑战列表
     const subChallenges = generateSubChallenges(token, c, s, d);
 
-    // Step 3: Solve each sub-challenge
+    // 第 3 步：逐个求解
     const solutions: number[] = [];
     for (let i = 0; i < subChallenges.length; i++) {
         const [salt, target] = subChallenges[i];
         const nonce = await solveSubChallenge(salt, target);
         solutions.push(nonce);
         onProgress?.(Math.round(((i + 1) / subChallenges.length) * 100));
-        // Yield to let React render progress updates
+        // 让出事件循环使 React 能渲染进度
         await new Promise((r) => setTimeout(r, 0));
     }
 
-    // Step 4: Redeem solutions for verification token
+    // 第 4 步：兑换解决方案为验证 token
     const redeemResp = await fetch(`${CAP_API}redeem`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, solutions, visitorId }),
+        body: JSON.stringify({ token, solutions }),
     });
     const redeemData = await redeemResp.json();
 

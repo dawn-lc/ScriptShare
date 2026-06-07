@@ -1,7 +1,19 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 
-import { SESSION_SECRET } from '../config';
+import { SESSION_SECRET, isProd, TOKEN_DURATION_MS, RENEW_THRESHOLD_MS, PASSWORD_ITERATIONS } from '../config';
+import { db } from '../db';
+import { users } from '../db';
+import { eq } from 'drizzle-orm';
+
+// 扩展 Express Request 以携带认证信息
+declare global {
+    namespace Express {
+        interface Request {
+            user?: AuthPayload;
+        }
+    }
+}
 
 function getSecret(): string {
     if (!SESSION_SECRET) {
@@ -16,6 +28,7 @@ export interface AuthPayload {
     userId: number | null;
     username: string;
     role: string;
+    tokenNonce: string;
     iat: number;
     exp: number;
 }
@@ -24,17 +37,44 @@ interface UserRow {
     id: number;
     username: string;
     role: string;
+    tokenNonce: string;
 }
 
-const TOKEN_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// TOKEN_DURATION_MS / RENEW_THRESHOLD_MS 来自 config
 
-// Generate a signed session token for a user
+/** 在响应中设置 session_token cookie。 */
+function setSessionCookie(res: Response, token: string): void {
+    res.cookie('session_token', token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: isProd,
+        maxAge: TOKEN_DURATION_MS, // 24 hours
+        path: '/',
+    });
+}
+
+/**
+ * 如果 token 仍有效但即将过期，签发续期 token。
+ * 返回续期后的 token（无需续期时返回 null）。
+ */
+export function renewTokenIfNeeded(payload: AuthPayload, res: Response): string | null {
+    const remaining = payload.exp - Date.now();
+    if (remaining > RENEW_THRESHOLD_MS) return null; // token 仍有效，无需续期
+
+    // 构建新 token，延长有效期
+    const token = createUserToken({ id: payload.userId!, username: payload.username, role: payload.role, tokenNonce: payload.tokenNonce });
+    setSessionCookie(res, token);
+    return token;
+}
+
+// 为用户生成签名 session token
 export function createUserToken(user: UserRow): string {
     const now = Date.now();
     const payload: AuthPayload = {
         userId: user.id,
         username: user.username,
         role: user.role,
+        tokenNonce: user.tokenNonce,
         iat: now,
         exp: now + TOKEN_DURATION_MS,
     };
@@ -44,7 +84,7 @@ export function createUserToken(user: UserRow): string {
     return `${base64}.${sig}`;
 }
 
-// Verify and decode session token
+// 验证并解码 session token
 export function verifyToken(token: string): AuthPayload | null {
     const parts = token.split('.');
     if (parts.length !== 2) return null;
@@ -56,8 +96,9 @@ export function verifyToken(token: string): AuthPayload | null {
 
     try {
         const data = JSON.parse(Buffer.from(base64, 'base64').toString('utf-8'));
+        // JSON.parse 返回 unknown，Token 结构由服务端签名保证，运行时类型安全
         const payload = data as AuthPayload;
-        // Check token expiration
+        // 检查 token 过期
         if (payload.exp && Date.now() > payload.exp) {
             return null;
         }
@@ -68,29 +109,42 @@ export function verifyToken(token: string): AuthPayload | null {
 }
 
 /**
- * Hash a password with PBKDF2 + random salt
+ * 使用 PBKDF2 + 随机盐值对密码进行哈希
  */
 export function hashPassword(password: string): string {
     const salt = crypto.randomBytes(16).toString('hex');
-    const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+    const hash = crypto.pbkdf2Sync(password, salt, PASSWORD_ITERATIONS, 64, 'sha512').toString('hex');
     return `${salt}:${hash}`;
 }
 
 /**
- * Verify a password against its hash
+ * 验证密码与哈希值是否匹配
  */
 export function verifyPassword(password: string, stored: string): boolean {
     const [salt, hash] = stored.split(':');
     if (!salt || !hash) return false;
-    const computed = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
-    // Constant-time compare
+    const computed = crypto.pbkdf2Sync(password, salt, PASSWORD_ITERATIONS, 64, 'sha512').toString('hex');
+    // 常量时间比较，防止时序攻击
     const a = Buffer.from(hash);
     const b = Buffer.from(computed);
     if (a.length !== b.length) return false;
     return crypto.timingSafeEqual(a, b);
 }
 
-// Middleware: require authentication
+/**
+ * 检查 token 的 tokenNonce 是否与数据库中用户的当前 tokenNonce 匹配。
+ * 若不匹配，则 token 已失效（如登出后）。
+ */
+function checkTokenNonce(payload: AuthPayload): boolean {
+    if (!payload.userId) return false;
+    // db 为 Proxy 动态类型，select 返回类型无法静态推导，需显式标注返回结构
+    const user = db.select({ tokenNonce: users.tokenNonce })
+        .from(users).where(eq(users.id, payload.userId)).get() as { tokenNonce: string } | undefined;
+    if (!user) return false;
+    return user.tokenNonce === payload.tokenNonce;
+}
+
+// 中间件：要求登录
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
     const token = req.cookies?.session_token;
 
@@ -106,15 +160,25 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
         return;
     }
 
-    // Attach user to request
-    (req as any).user = payload;
+    // 检查 token 是否已失效（如登出）
+    if (!checkTokenNonce(payload)) {
+        res.clearCookie('session_token', { path: '/' });
+        res.status(401).json({ error: '登录已失效，请重新登录', code: 'AUTH_INVALIDATED' });
+        return;
+    }
+
+    // token 即将过期时续期（滚动会话）
+    renewTokenIfNeeded(payload, res);
+
+    // 将用户信息附加到请求
+    req.user = payload;
     next();
 }
 
-// Middleware: require admin role
+// 中间件：要求管理员角色
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
     requireAuth(req, res, () => {
-        const user = (req as any).user as AuthPayload;
+        const user = req.user!;
         if (user.role !== 'admin') {
             res.status(403).json({ error: '需要管理员权限', code: 'FORBIDDEN' });
             return;
@@ -123,19 +187,21 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
     });
 }
 
-// Middleware: optional auth check (attaches user if logged in)
-export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
+// 中间件：可选认证（已登录时附加用户信息）
+export function optionalAuth(req: Request, res: Response, next: NextFunction): void {
     const token = req.cookies?.session_token;
     if (token) {
         const payload = verifyToken(token);
-        if (payload && payload.userId) {
-            (req as any).user = payload;
+        if (payload && payload.userId && checkTokenNonce(payload)) {
+            // token 即将过期时续期（滚动会话）
+            renewTokenIfNeeded(payload, res);
+            req.user = payload;
         }
     }
     next();
 }
 
-// Helper: get current user from request (after requireAuth/optionalAuth)
+// 辅助函数：从请求中获取当前用户（在 requireAuth/optionalAuth 之后使用）
 export function getCurrentUser(req: Request): AuthPayload | null {
-    return (req as any).user || null;
+    return req.user || null;
 }

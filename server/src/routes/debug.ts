@@ -1,17 +1,22 @@
 /**
- * Debug API — only available when DEBUG_ENABLED=true.
- * Provides endpoints for seeding test data and resetting the database.
+ * Debug API — 仅在 DEBUG_ENABLED=true 时可用。
+ * 提供生成测试数据和重置数据库的端点。
  */
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { db } from '../db';
-import { users, scripts } from '../db';
-import { eq, count } from 'drizzle-orm';
+import { users, scripts, installLogs, updateLogs, auditLogs, webhookLogs, capChallenges, capTokens, ratings } from '../db';
+import { eq, count, lte, gt, and } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
+import { createUserToken, hashPassword } from '../middleware/auth';
+import { sanitizeField, FIELD_LIMITS } from '../utils/validate';
+import { hashIP } from '../utils/ip';
+import { PORT, ADMIN_USERNAME, ADMIN_PASSWORD, PASSWORD_ITERATIONS, DEBUG_SEED_TOTAL } from '../config';
+import { ensureAdmin } from './auth';
 
 const router = Router();
 
-// ── Local-only middleware ──
+// ── 仅限本机中间件 ──
 router.use((req: Request, res: Response, next) => {
     const ip = req.ip || req.socket.remoteAddress || '';
     const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost';
@@ -22,7 +27,7 @@ router.use((req: Request, res: Response, next) => {
     next();
 });
 
-// ── Helpers ──
+// ── 辅助函数 ──
 const pick = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 const randInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 
@@ -107,114 +112,532 @@ function generateCode(name: string): string {
     return `// ==UserScript==\n// @name         ${name}\n// @namespace    ${pick(namespaces)}\n// @version      ${randInt(1, 5)}.${randInt(0, 20)}.${randInt(0, 999)}\n// @description  ${pick(descriptions)}\n// @author       ${pick(authors)}\n// @match        ${pick(matchPatterns)}\n// @grant        ${pick(grantList)}\n// ==/UserScript==\n\n(function() {\n    \'use strict\';\n    console.log(\'${name} loaded\');\n})();`;
 }
 
-// ── Seed endpoint ──
+// ── 模拟操作 ──
 
-// POST /api/debug/seed - Insert 3000 test scripts
+// POST /api/debug/login-as - 以指定用户身份登录（返回 session token）
+router.post('/login-as', (req: Request, res: Response) => {
+    const { userId, username } = req.body;
+    if (!userId && !username) {
+        res.status(400).json({ error: '请提供 userId 或 username' });
+        return;
+    }
+
+    const condition = userId ? eq(users.id, parseInt(userId)) : eq(users.username, username);
+    const user = db.select({
+        id: users.id, username: users.username, role: users.role, tokenNonce: users.tokenNonce,
+    }).from(users).where(condition).get();
+
+    if (!user) {
+        res.status(404).json({ error: '用户不存在' });
+        return;
+    }
+
+    const token = createUserToken(user);
+    // 返回 token 和 cookie 设置指引
+    res.json({
+        message: `已模拟登录为 ${user.username} (${user.role})`,
+        userId: user.id,
+        role: user.role,
+        token,
+        cookie: `session_token=${token}; HttpOnly; Path=/`,
+    });
+
+});
+
+// POST /api/debug/create-user - 创建测试用户
+router.post('/create-user', (req: Request, res: Response) => {
+    const { username, password, role } = req.body;
+    const safeName = sanitizeField((username || `test_${Date.now()}`).trim(), 50);
+    const safePassword = password || 'test123';
+
+    const existing = db.select({ id: users.id }).from(users).where(eq(users.username, safeName)).get();
+    if (existing) {
+        res.status(409).json({ error: '用户名已存在', userId: existing.id });
+        return;
+    }
+
+    const hash = hashPassword(safePassword);
+    const tokenNonce = crypto.randomBytes(8).toString('hex');
+    const userRole = role === 'admin' ? 'admin' : 'user';
+
+    db.insert(users).values({
+        username: safeName,
+        displayName: safeName,
+        passwordHash: hash,
+        role: userRole,
+        tokenNonce,
+    }).run();
+
+    const created = db.select({ id: users.id, username: users.username, role: users.role })
+        .from(users).where(eq(users.username, safeName)).get();
+
+    res.status(201).json({
+        message: `用户 ${safeName} 已创建`,
+        user: created,
+        credentials: { username: safeName, password: safePassword },
+    });
+
+});
+
+// POST /api/debug/create-script - 通过真实 API 模拟用户上传脚本（全流程）
+router.post('/create-script', async (req: Request, res: Response) => {
+    const { name, userId, readme } = req.body;
+    if (!userId) {
+        res.status(400).json({ error: '请提供 userId（脚本所有者）' });
+        return;
+    }
+
+    const owner = db.select({ id: users.id, username: users.username, role: users.role, tokenNonce: users.tokenNonce })
+        .from(users).where(eq(users.id, parseInt(userId))).get();
+    if (!owner) {
+        res.status(404).json({ error: '用户不存在' });
+        return;
+    }
+
+    const scriptName = sanitizeField(name || `Test Script ${Date.now()}`, FIELD_LIMITS.name);
+    const safeName = scriptName.replace(/\s+/g, '-');
+
+    // 生成完整的 UserScript 元数据，模拟真实用户编写的脚本
+    const code = `// ==UserScript==
+// @name         ${scriptName}
+// @namespace    http://localhost/debug/
+// @version      1.0.0
+// @description  由 Debug API 模拟用户创建的测试脚本
+// @author       ${owner.username}
+// @match        https://*/*
+// @match        http://*/*
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_notification
+// @grant        GM_xmlhttpRequest
+// @icon         https://www.google.com/s2/favicons?domain=example.com
+// @supportURL   https://github.com/example/script/issues
+// ==/UserScript==
+
+(function() {
+    'use strict';
+    console.log('${scriptName} loaded');
+})();`;
+
+    // 生成 session token 模拟真实登录状态
+    const token = createUserToken(owner);
+
+    try {
+        const apiResp = await fetch(`http://localhost:${PORT}/api/scripts`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Cookie': `session_token=${token}`,
+            },
+            body: JSON.stringify({
+                code,
+                filename: `${safeName}.user.js`,
+                readme: readme || `# ${scriptName}\n\n由 Debug API 通过真实上传流程创建的测试脚本。`,
+            }),
+        });
+        const result = await apiResp.json() as Record<string, unknown>;
+        res.status(apiResp.status).json({
+            ...result,
+            _via: 'POST /api/scripts (real API — metadata validation, duplicate check, rate limit)',
+        });
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        res.status(500).json({ error: `模拟创建脚本失败: ${msg}` });
+    }
+});
+
+// POST /api/debug/rate - 通过真实 API 为脚本评分
+router.post('/rate', async (req: Request, res: Response) => {
+    const { scriptId, userId, score } = req.body;
+    if (!scriptId || !userId || !score) {
+        res.status(400).json({ error: '请提供 scriptId、userId 和 score（1-5）' });
+        return;
+    }
+
+    const s = parseInt(score);
+    if (s < 1 || s > 5) {
+        res.status(400).json({ error: '评分必须在 1-5 之间' });
+        return;
+    }
+
+    const owner = db.select({ id: users.id, username: users.username, role: users.role, tokenNonce: users.tokenNonce })
+        .from(users).where(eq(users.id, parseInt(userId))).get();
+    if (!owner) {
+        res.status(404).json({ error: '用户不存在' });
+        return;
+    }
+
+    // 生成 session token 模拟用户登录状态
+    const token = createUserToken(owner);
+
+    try {
+        const apiResp = await fetch(`http://localhost:${PORT}/api/scripts/${scriptId}/rate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Cookie': `session_token=${token}`,
+            },
+            body: JSON.stringify({ score: s }),
+        });
+        const result = await apiResp.json() as Record<string, unknown>;
+        res.status(apiResp.status).json({
+            ...result,
+            _via: `POST /api/scripts/${scriptId}/rate (real API)`,
+        });
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        res.status(500).json({ error: `模拟评分失败: ${msg}` });
+    }
+});
+
+// POST /api/debug/simulate-install - 通过真实安装/更新端点模拟用户安装
+router.post('/simulate-install', async (req: Request, res: Response) => {
+    const { scriptId, count = 1, asUpdate, channel } = req.body;
+    if (!scriptId) {
+        res.status(400).json({ error: '请提供 scriptId' });
+        return;
+    }
+
+    const sid = parseInt(scriptId);
+    // channel 为空时使用无前缀路由（/install），否则使用 /stable/ 或 /canary/
+    const endpoint = channel
+        ? (asUpdate ? `/api/scripts/${sid}/${channel}/update` : `/api/scripts/${sid}/${channel}/install`)
+        : (asUpdate ? `/api/scripts/${sid}/update` : `/api/scripts/${sid}/install`);
+
+    let successCount = 0;
+    const maxCalls = Math.min(count, 100); // 限制并发数
+
+    const tasks = [];
+    for (let i = 0; i < maxCalls; i++) {
+        tasks.push(
+            fetch(`http://localhost:${PORT}${endpoint}`, {
+                headers: {
+                    'User-Agent': `Mozilla/5.0 (Debug Simulator ${i}) Chrome/120.0.0.0`,
+                    'X-Forwarded-For': `192.168.${randInt(0, 255)}.${randInt(1, 254)}`,
+                },
+            }).then(r => {
+                if (r.ok) successCount++;
+                return r.text();
+            }).catch(() => {/* 单个请求失败不影响整体 */ })
+        );
+    }
+
+    await Promise.all(tasks);
+
+    res.json({
+        message: `通过真实 ${asUpdate ? 'update' : 'install'} 端点模拟 ${maxCalls} 次请求，成功 ${successCount} 次`,
+        type: asUpdate ? 'update' : 'install',
+        requested: maxCalls,
+        succeeded: successCount,
+        endpoint,
+        _via: `GET ${endpoint} (real API)`,
+    });
+});
+
+// POST /api/debug/simulate-traffic - 调用真实 API 生成综合流量
+router.post('/simulate-traffic', async (req: Request, res: Response) => {
+    const { installCount = 10, updateCount = 10, ratingCount = 5 } = req.body;
+
+    const allUsers = db.select({ id: users.id, username: users.username, role: users.role, tokenNonce: users.tokenNonce }).from(users).all() as { id: number; username: string; role: string; tokenNonce: string }[];
+    const allScripts = db.select({ id: scripts.id }).from(scripts).all() as { id: number }[];
+
+    if (allScripts.length === 0 || allUsers.length === 0) {
+        res.status(400).json({ error: '请先确保数据库中有用户和脚本' });
+        return;
+    }
+
+    let installOk = 0;
+    let updateOk = 0;
+    let ratingOk = 0;
+    const baseUrl = `http://localhost:${PORT}`;
+
+    // 并发调用安装端点
+    const installTasks = [];
+    for (let i = 0; i < installCount; i++) {
+        const script = pick(allScripts);
+        installTasks.push(
+            fetch(`${baseUrl}/api/scripts/${script.id}/install`, {
+                headers: {
+                    'User-Agent': `Mozilla/5.0 (Traffic Sim ${i})`,
+                    'X-Forwarded-For': `10.0.${randInt(0, 255)}.${randInt(1, 254)}`,
+                },
+            }).then(r => { if (r.ok) installOk++; }).catch(() => { })
+        );
+    }
+    await Promise.all(installTasks);
+
+    // 并发调用更新端点
+    const updateTasks = [];
+    for (let i = 0; i < updateCount; i++) {
+        const script = pick(allScripts);
+        updateTasks.push(
+            fetch(`${baseUrl}/api/scripts/${script.id}/update`, {
+                headers: {
+                    'X-Forwarded-For': `10.0.${randInt(0, 255)}.${randInt(1, 254)}`,
+                },
+            }).then(r => { if (r.ok) updateOk++; }).catch(() => { })
+        );
+    }
+    await Promise.all(updateTasks);
+
+    // 评分（需要登录）
+    const ratingTasks = [];
+    for (let i = 0; i < Math.min(ratingCount, allUsers.length * allScripts.length); i++) {
+        const user = pick(allUsers);
+        const script = pick(allScripts);
+        const token = createUserToken(user);
+        const score = randInt(1, 5);
+        ratingTasks.push(
+            fetch(`${baseUrl}/api/scripts/${script.id}/rate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': `session_token=${token}`,
+                },
+                body: JSON.stringify({ score }),
+            }).then(r => { if (r.ok) ratingOk++; }).catch(() => { })
+        );
+    }
+    await Promise.all(ratingTasks);
+
+    res.json({
+        message: '流量模拟完成（通过真实 API）',
+        stats: {
+            installCalls: installOk,
+            updateCalls: updateOk,
+            ratingSubmissions: ratingOk,
+        },
+        _via: 'GET /api/scripts/:id/install, GET /api/scripts/:id/update, POST /api/scripts/:id/rate (real APIs)',
+    });
+});
+
+// ── 数据库统计 ──
+
+// GET /api/debug/stats - 各表行数
+router.get('/stats', (_req: Request, res: Response) => {
+    const tables = {
+        users: db.select({ count: count() }).from(users).all(),
+        scripts: db.select({ count: count() }).from(scripts).all(),
+        installLogs: db.select({ count: count() }).from(installLogs).all(),
+        updateLogs: db.select({ count: count() }).from(updateLogs).all(),
+        auditLogs: db.select({ count: count() }).from(auditLogs).all(),
+        webhookLogs: db.select({ count: count() }).from(webhookLogs).all(),
+        capChallenges: db.select({ count: count() }).from(capChallenges).all(),
+        capTokens: db.select({ count: count() }).from(capTokens).all(),
+        ratings: db.select({ count: count() }).from(ratings).all(),
+    };
+    const stats: Record<string, number> = {};
+    for (const [key, rows] of Object.entries(tables)) {
+        stats[key] = rows[0]?.count ?? 0;
+    }
+    res.json(stats);
+});
+
+// ── 验证码系统诊断 ──
+
+// GET /api/debug/cap - 查看验证码挑战和 token 统计
+router.get('/cap', (_req: Request, res: Response) => {
+    const now = Date.now();
+    const [activeChallenges] = db.select({ count: count() }).from(capChallenges)
+        .where(gt(capChallenges.expires, now)).all();
+    const [expiredChallenges] = db.select({ count: count() }).from(capChallenges)
+        .where(lte(capChallenges.expires, now)).all();
+    const [activeTokens] = db.select({ count: count() }).from(capTokens)
+        .where(gt(capTokens.expires, now)).all();
+    const [expiredTokens] = db.select({ count: count() }).from(capTokens)
+        .where(lte(capTokens.expires, now)).all();
+
+    res.json({
+        challenges: {
+            active: activeChallenges?.count ?? 0,
+            expired: expiredChallenges?.count ?? 0,
+        },
+        tokens: {
+            active: activeTokens?.count ?? 0,
+            expired: expiredTokens?.count ?? 0,
+        },
+    });
+});
+
+// POST /api/debug/cleanup - 手动触发过期挑战和 token 清理
+router.post('/cleanup', (_req: Request, res: Response) => {
+    const now = Date.now();
+    const delChallenges = db.delete(capChallenges).where(lte(capChallenges.expires, now)).run() as { changes?: number; rowCount?: number };
+    const delTokens = db.delete(capTokens).where(lte(capTokens.expires, now)).run() as { changes?: number; rowCount?: number };
+
+    res.json({
+        message: '过期记录已清理',
+        deletedChallenges: delChallenges.changes ?? delChallenges.rowCount ?? 0,
+        deletedTokens: delTokens.changes ?? delTokens.rowCount ?? 0,
+    });
+
+});
+
+// ── 种子数据端点 ──
+
+// POST /api/debug/seed - 通过真实 API 插入 测试脚本（触发限流时会自动停止，便于验证限流机制）
 router.post('/seed', async (_req: Request, res: Response) => {
-    // Count existing scripts
+    // 统计已有脚本数
     const [{ count: existingCount }] = db.select({ count: count() }).from(scripts).all();
     if (existingCount > 0) {
         res.json({ message: `数据库中已有 ${existingCount} 条脚本，跳过填充。如需重新填充请先调用 /api/debug/reset` });
         return;
     }
 
-    // Ensure admin user exists
+    // 确保管理员用户存在，并创建一批测试用户用于分布脚本所有权
     const [{ count: userCount }] = db.select({ count: count() }).from(users).all();
-    let adminId = 1;
+    let adminId: number;
     if (userCount === 0) {
         const password = 'admin123';
         const salt = crypto.randomBytes(16).toString('hex');
-        const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+        const hash = crypto.pbkdf2Sync(password, salt, PASSWORD_ITERATIONS, 64, 'sha512').toString('hex');
         const [newUser] = await (db.insert(users).values({
             username: 'admin',
             displayName: 'Admin',
             passwordHash: `${salt}:${hash}`,
             role: 'admin',
-        }).returning({ id: users.id }) as any);
+        }).returning({ id: users.id }));
         adminId = newUser.id;
     } else {
         const existing = db.select({ id: users.id }).from(users).where(eq(users.username, 'admin')).get();
         adminId = existing?.id || 1;
     }
 
-    // Generate and insert scripts in batches
-    const BATCH_SIZE = 100;
-    const TOTAL = 3000;
-    const now = Date.now();
-    const DAY_MS = 86400000;
-
-    for (let batch = 0; batch < TOTAL / BATCH_SIZE; batch++) {
-        const batchRows: any[] = [];
-        for (let i = 0; i < BATCH_SIZE; i++) {
-            const idx = batch * BATCH_SIZE + i;
-            const baseName = pick(names);
-            const suffix = idx > 0 ? ` #${idx}` : '';
-            const name = `${baseName}${suffix}`;
-
-            const ageDays = Math.max(0, 90 - idx * 0.03);
-            const createdAt = new Date(now - randInt(0, Math.ceil(ageDays)) * DAY_MS).toISOString();
-            const updatedAgo = Math.max(0, ageDays * 0.3 - randInt(0, 5));
-            const updatedAt = new Date(now - updatedAgo * DAY_MS).toISOString();
-
-            const installs = randInt(0, 50000);
-            const updateChecks = randInt(0, 200000);
-
-            const numGrants = randInt(2, 4);
-            const selectedGrants: string[] = [];
-            const grantsCopy = [...grantList];
-            for (let g = 0; g < numGrants && grantsCopy.length > 0; g++) {
-                const gi = randInt(0, grantsCopy.length - 1);
-                selectedGrants.push(grantsCopy[gi]);
-                grantsCopy.splice(gi, 1);
-            }
-
-            batchRows.push({
-                name,
-                namespace: pick(namespaces),
-                version: `${randInt(1, 5)}.${randInt(0, 20)}.${randInt(0, 999)}`,
-                description: pick(descriptions),
-                author: pick(authors),
-                icon: '',
-                icon64: '',
-                grant: selectedGrants.join('\n'),
-                match: pick(matchPatterns),
-                exclude: '',
-                require: '',
-                resource: '',
-                connect: '',
-                code: generateCode(name),
-                filename: `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}.user.js`,
-                userId: adminId,
-                installs,
-                updateChecks,
-                webhookSecret: null,
-                githubRepo: null,
-                githubPath: null,
-                githubBranch: 'main',
-                canaryVersion: null,
-                canaryCode: null,
-                canaryBranch: 'canary',
-                readme: '',
-                i18n: '{}',
-                createdAt,
-                updatedAt,
-            });
+    // 从 authors 列表中创建测试用户（已存在则跳过），用于脚本所有权分布
+    const seedUsers: { id: number; username: string; role: string; tokenNonce: string }[] = [];
+    for (const author of authors) {
+        const existing = db.select({ id: users.id, username: users.username, role: users.role, tokenNonce: users.tokenNonce })
+            .from(users).where(eq(users.username, author)).get();
+        if (existing) {
+            seedUsers.push(existing);
+        } else {
+            const hash = hashPassword('test123');
+            const tokenNonce = crypto.randomBytes(8).toString('hex');
+            db.insert(users).values({
+                username: author,
+                displayName: author,
+                passwordHash: hash,
+                role: 'user',
+                tokenNonce,
+            }).run();
+            const created = db.select({ id: users.id, username: users.username, role: users.role, tokenNonce: users.tokenNonce })
+                .from(users).where(eq(users.username, author)).get()!;
+            seedUsers.push(created);
         }
-
-        db.insert(scripts).values(batchRows).run();
-        console.log(`  [seed] 进度: ${(batch + 1) * BATCH_SIZE} / ${TOTAL}`);
     }
 
-    res.json({ message: `成功插入 ${TOTAL} 条测试脚本`, adminUser: `admin / admin123` });
+    const admin = db.select({ id: users.id, username: users.username, role: users.role, tokenNonce: users.tokenNonce })
+        .from(users).where(eq(users.id, adminId)).get()!;
+
+    const TOTAL = DEBUG_SEED_TOTAL;
+    let successCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    for (let i = 0; i < TOTAL; i++) {
+        const baseName = pick(names);
+        const suffix = i > 0 ? ` #${i}` : '';
+        const name = `${baseName}${suffix}`;
+        const safeName = name.replace(/\s+/g, '-');
+        const author = pick(authors);
+
+        // 生成 UserScript 代码（同现有的 generateCode 逻辑）
+        const code = `// ==UserScript==
+// @name         ${name}
+// @namespace    ${pick(namespaces)}
+// @version      ${randInt(1, 5)}.${randInt(0, 20)}.${randInt(0, 999)}
+// @description  ${pick(descriptions)}
+// @author       ${author}
+// @match        ${pick(matchPatterns)}
+// @grant        ${pick(grantList)}
+// ==/UserScript==
+
+(function() {
+    'use strict';
+    console.log('${name} loaded');
+})();`;
+
+        // 随机选一个用户作为脚本所有者（80% 概率用测试用户，20% 概率用 admin）
+        const owner = Math.random() < 0.8 ? pick(seedUsers) : admin;
+        const token = createUserToken(owner);
+
+        try {
+            const apiResp = await fetch(`http://localhost:${PORT}/api/scripts`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': `session_token=${token}`,
+                },
+                body: JSON.stringify({
+                    code,
+                    filename: `${safeName}.user.js`,
+                    readme: '',
+                }),
+            });
+
+            const result = await apiResp.json() as Record<string, unknown>;
+
+            if (apiResp.ok) {
+                successCount++;
+                if (successCount % 50 === 0) {
+                    console.log(`  [seed] 进度: ${successCount} / ${TOTAL}（通过真实 API）`);
+                }
+            } else {
+                failCount++;
+                const errMsg = String(result.error || result.message || '未知错误');
+                errors.push(`#${i} (${name}): ${errMsg}`);
+
+                // 遇到限流或其他错误时停止
+                if (apiResp.status === 429) {
+                    console.log(`  [seed] ⛔ 触发限流，停止填充`);
+                    break;
+                }
+            }
+        } catch (err: unknown) {
+            failCount++;
+            const msg = err instanceof Error ? err.message : String(err);
+            errors.push(`#${i} (${name}): ${msg}`);
+            // 网络错误也停止
+            break;
+        }
+
+        // 稍微延迟，避免短时间内过多请求
+        if (i > 0 && i % 10 === 0) {
+            await new Promise(r => setTimeout(r, 50));
+        }
+    }
+
+    res.json({
+        message: `通过真实 API 填充脚本：成功 ${successCount}，失败 ${failCount}${failCount > 0 ? `，首个错误: ${errors[0]}` : ''}`,
+        stats: { success: successCount, fail: failCount },
+        errors: errors.length > 0 ? errors.slice(0, 10) : undefined,
+        usersCreated: seedUsers.length,
+        testUserPassword: 'test123',
+        adminUser: `admin / admin123`,
+        _note: '脚本所有者按 80% 测试用户 + 20% admin 随机分布',
+    });
 });
 
-// POST /api/debug/reset - Reset all data (scripts, installs, updates, webhooks, etc.)
+// POST /api/debug/reset - 重置所有数据（自动重建管理员）
 router.post('/reset', async (_req: Request, res: Response) => {
-    // Delete in dependency order
+    // 按依赖顺序删除（子表先删，父表后删）
+    db.delete(installLogs).run();
+    db.delete(updateLogs).run();
+    db.delete(ratings).run();
+    db.delete(auditLogs).run();
+    db.delete(webhookLogs).run();
+    db.delete(capChallenges).run();
+    db.delete(capTokens).run();
     db.delete(scripts).run();
     db.delete(users).run();
-    // Note: other tables have ON DELETE CASCADE or SET NULL, handled automatically
-    res.json({ message: '数据库已重置' });
+
+    // 根据配置重建管理员账号
+    if (ADMIN_USERNAME && ADMIN_PASSWORD) {
+        await ensureAdmin(ADMIN_USERNAME, ADMIN_PASSWORD);
+    }
+
+    res.json({ message: '数据库已重置，管理员账号已重建' });
+
 });
 
 export default router;

@@ -1,8 +1,8 @@
 /**
- * Cap CAPTCHA integration.
- * Uses @cap.js/server for challenge generation and verification.
- * Storage is backed by SQLite via Drizzle ORM.
- * Tables are created by database.ts initDatabase().
+ * Cap CAPTCHA 集成。
+ * 使用 @cap.js/server 生成和验证挑战。
+ * 存储由 Drizzle ORM 的 SQLite 支持。
+ * 表由 database.ts 的 initDatabase() 创建。
  */
 import Cap from '@cap.js/server';
 import { db } from '../db';
@@ -12,7 +12,7 @@ import { eq, gt, lte, and } from 'drizzle-orm';
 const cap = new Cap({
     storage: {
         challenges: {
-            store: async (token: string, data: any) => {
+            store: async (token: string, data: Record<string, unknown>) => {
                 db.insert(capChallenges).values({
                     token,
                     data: JSON.stringify(data),

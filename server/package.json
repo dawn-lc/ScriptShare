@@ -4,7 +4,9 @@
     "description": "ScriptShare API Server",
     "main": "dist/index.js",
     "scripts": {
+        "predev": "set DOTENV_CONFIG_QUIET=true& drizzle-kit generate",
         "dev": "tsx watch src/index.ts",
+        "dev:skip-db": "tsx watch src/index.ts",
         "build": "tsc",
         "start": "node dist/index.js",
         "db:generate": "drizzle-kit generate",

@@ -27,7 +27,7 @@ export interface Script {
     canaryBranch?: string;
     readme?: string;
     supportURL?: string;
-    i18n?: string;
+    i18n?: Record<string, Record<string, string>>;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -44,9 +44,9 @@ export interface ScriptListItem {
     updateChecks: number;
     createdAt: string;
     updatedAt: string;
-    i18n?: string;
+    i18n?: Record<string, Record<string, string>>;
     rating?: number;
     ratingCount?: number;
 }
 
-// InstallStats and UpdateCheckResult were removed — they are defined in client/src/api/index.ts
+// InstallStats 和 UpdateCheckResult 已移除 — 它们在 client/src/api/index.ts 中定义

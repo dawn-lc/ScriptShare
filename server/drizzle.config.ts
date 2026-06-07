@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { defineConfig } from 'drizzle-kit';
 
 const dialect = (process.env.DB_DIALECT || 'sqlite').toLowerCase();

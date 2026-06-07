@@ -17,7 +17,7 @@ import {
 import { confirm, alert } from '../components/ConfirmDialog';
 import { useAuth } from '../contexts/AuthContext';
 import { getLocalizedText } from '../utils/localize';
-import { Frown, FileText, BarChart3, Pencil, Trash2, User, Download, RefreshCw, Calendar, Clipboard, Globe, Key, Package, FlaskConical, ChevronLeft, ChevronRight, Star, MessageCircle } from 'lucide-react';
+import { FaceFrownIcon, DocumentTextIcon, ChartBarIcon, PencilIcon, TrashIcon, UserIcon, ArrowDownTrayIcon, ArrowPathIcon, CalendarDaysIcon, ClipboardIcon, GlobeAltIcon, KeyIcon, CubeIcon, BeakerIcon, ChevronLeftIcon, ChevronRightIcon, StarIcon, ChatBubbleLeftRightIcon, ShareIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
 import ScriptIcon from '../components/ScriptIcon';
 import StarRating from '../components/StarRating';
 
@@ -46,10 +46,11 @@ export default function ScriptDetail() {
             try {
                 const data = await getScript(scriptId);
                 setScript(data.script);
-                // Load rating data in parallel
+                // 并行加载评分数据
                 getScriptRatings(scriptId).then(setRatingData).catch(() => { });
-            } catch (err: any) {
-                setError(err.message || t('common.error'));
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                setError(msg || t('common.error'));
             } finally {
                 setLoading(false);
             }
@@ -63,8 +64,9 @@ export default function ScriptDetail() {
         try {
             await deleteScript(script.id);
             navigate('/scripts', { replace: true });
-        } catch (err: any) {
-            alert(t('scriptDetail.deleteFail', { msg: err.message || t('common.error') }));
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            alert(t('scriptDetail.deleteFail', { msg: msg || t('common.error') }));
             setDeleting(false);
         }
     }
@@ -75,11 +77,15 @@ export default function ScriptDetail() {
         });
     }
 
-    async function handleLoadSource() {
-        if (!script || sourceCode) return;
+    async function loadSourceCode(targetChannel?: string) {
+        if (!script) return;
+        const ch = targetChannel || channel;
         setSourceLoading(true);
         try {
-            const res = await fetch(`/api/scripts/${script.id}/code`);
+            const url = ch === 'canary'
+                ? `/api/scripts/${script.id}/canary/code`
+                : `/api/scripts/${script.id}/code`;
+            const res = await fetch(url);
             const text = await res.text();
             setSourceCode(text);
         } catch {
@@ -88,6 +94,17 @@ export default function ScriptDetail() {
             setSourceLoading(false);
         }
         setShowSource(true);
+    }
+
+    // 切换频道时自动更新已显示的源码
+    useEffect(() => {
+        if (showSource && script) {
+            loadSourceCode(channel);
+        }
+    }, [channel]);
+
+    async function handleLoadSource() {
+        await loadSourceCode();
     }
 
     if (loading) {
@@ -101,10 +118,10 @@ export default function ScriptDetail() {
     if (error || !script) {
         return (
             <div className="text-center py-20">
-                <p className="text-5xl mb-4"><Frown className="w-12 h-12 inline-block text-gray-300" /></p>
+                <p className="text-5xl mb-4"><FaceFrownIcon className="w-12 h-12 inline-block text-gray-300" /></p>
                 <p className="text-lg text-gray-500 dark:text-gray-400">{error || t('scriptDetail.notFound')}</p>
-                <Link to="/scripts" className="btn-primary mt-4 inline-block">
-                    <ChevronLeft className="w-4 h-4 inline-block" /> {t('scriptDetail.backToList')}
+                <Link to="/scripts" className="btn-primary mt-4 inline-flex items-center gap-1">
+                    <ChevronLeftIcon className="w-4 h-4" /> {t('scriptDetail.backToList')}
                 </Link>
             </div>
         );
@@ -118,7 +135,7 @@ export default function ScriptDetail() {
     const updateUrl = getUpdateUrl(script.id, channel);
     const codeUrl = getScriptCode(script.id);
 
-    // Generate the install code for users to copy
+    // 生成供用户复制的安装代码
     const installCode = `// ==UserScript==
 // @name         ${script.name}
 // @namespace    ${script.namespace || `http://localhost/`}
@@ -136,7 +153,7 @@ export default function ScriptDetail() {
             <div className="space-y-6">
                 {/* Breadcrumb */}
                 <nav className="text-sm text-gray-500 dark:text-gray-400">
-                    <Link to="/scripts" className="hover:text-primary-600 dark:hover:text-primary-400 dark:text-primary-400">
+                    <Link to="/scripts" className="hover:text-primary-600 dark:hover:text-primary-400">
                         {t('scriptDetail.breadcrumb')}
                     </Link>
                     <span className="mx-2">/</span>
@@ -151,19 +168,34 @@ export default function ScriptDetail() {
                             <div className="flex items-start justify-between gap-4">
                                 <div>
                                     <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{getLocalizedText(script.i18n, 'name', i18n.language, script.name)}</h1>
-                                    {script.description && <p className="text-gray-500 dark:text-gray-400 mt-1">{getLocalizedText(script.i18n, 'description', i18n.language, script.description)}</p>}
+                                    {script.description && <p className="text-gray-500 dark:text-gray-400 mt-1 line-clamp-3" title={getLocalizedText(script.i18n, 'description', i18n.language, script.description)}>{getLocalizedText(script.i18n, 'description', i18n.language, script.description)}</p>}
                                 </div>
                                 <div className="flex items-center gap-2 flex-shrink-0">
-                                    {isAuthenticated && (user?.role === 'admin' || user?.id === (script as any).userId) && (
+                                    <button
+                                        className="btn-secondary"
+                                        onClick={() => {
+                                            const url = window.location.href;
+                                            navigator.clipboard.writeText(url).then(() => {
+                                                alert(t('scriptDetail.shareCopied'), 'success');
+                                            });
+                                        }}
+                                    >
+                                        <ShareIcon className="w-4 h-4 mr-1" />{t('scriptDetail.share')}
+                                    </button>
+                                    {isAuthenticated && (user?.role === 'admin' || user?.id === script.userId) && (
                                         <>
                                             <Link to={`/scripts/${script.id}/stats`} className="btn-secondary">
-                                                <BarChart3 className="w-4 h-4 inline-block mr-1" />{t('scriptDetail.stats')}
+                                                <ChartBarIcon className="w-4 h-4 mr-1" />{t('scriptDetail.stats')}
                                             </Link>
                                             <Link to={`/scripts/${script.id}/edit`} className="btn-secondary">
-                                                <Pencil className="w-4 h-4 inline-block mr-1" />{t('scriptDetail.edit')}
+                                                <PencilIcon className="w-4 h-4 mr-1" />{t('scriptDetail.edit')}
                                             </Link>
+                                            <Link to={`/scripts/${script.id}/settings`} className="btn-secondary">
+                                                <Cog6ToothIcon className="w-4 h-4 mr-1" />{t('scriptDetail.settings')}
+                                            </Link>
+                                            <div className="w-px h-6 bg-gray-200 dark:bg-gray-700" />
                                             <button className="btn-danger" onClick={handleDelete} disabled={deleting}>
-                                                {deleting ? t('scriptDetail.deleting') : <><Trash2 className="w-4 h-4 inline-block mr-1" />{t('scriptDetail.delete')}</>}
+                                                {deleting ? t('scriptDetail.deleting') : <><TrashIcon className="w-4 h-4 mr-1" />{t('scriptDetail.delete')}</>}
                                             </button>
                                         </>
                                     )}
@@ -174,14 +206,14 @@ export default function ScriptDetail() {
                                     v{script.version}
                                 </span>
                                 {script.canaryVersion && (
-                                    <span className="font-mono bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded text-xs font-semibold border border-amber-300 dark:border-amber-700">
-                                        <FlaskConical className="w-3 h-3 inline-block mr-0.5" />Canary: v{script.canaryVersion}
+                                    <span className="font-mono bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 px-2.5 py-0.5 rounded-full text-xs font-semibold">
+                                        <BeakerIcon className="w-3 h-3 mr-0.5" />v{script.canaryVersion}
                                     </span>
                                 )}
-                                {script.author && <span><User className="w-3 h-3 inline-block mr-0.5" />{script.author}</span>}
-                                <span><Download className="w-3 h-3 inline-block mr-0.5" />{t('scriptDetail.installs', { count: script.installs })}</span>
-                                <span><RefreshCw className="w-3 h-3 inline-block mr-0.5" />{t('scriptDetail.updateChecks', { count: script.updateChecks })}</span>
-                                <span><Calendar className="w-3 h-3 inline-block mr-0.5" />{t('scriptDetail.updatedOn', { date: new Date(script.updatedAt).toLocaleDateString('zh-CN') })}</span>
+                                {script.author && <span className="inline-flex items-center gap-1"><UserIcon className="w-3 h-3" />{script.author}</span>}
+                                <span className="inline-flex items-center gap-1"><ArrowDownTrayIcon className="w-3 h-3" />{t('scriptDetail.installs', { count: script.installs })}</span>
+                                <span className="inline-flex items-center gap-1"><ArrowPathIcon className="w-3 h-3" />{t('scriptDetail.updateChecks', { count: script.updateChecks })}</span>
+                                <span className="inline-flex items-center gap-1"><CalendarDaysIcon className="w-3 h-3" />{t('scriptDetail.updatedOn', { date: new Date(script.updatedAt).toLocaleDateString('zh-CN') })}</span>
                             </div>
                         </div>
                     </div>
@@ -190,7 +222,7 @@ export default function ScriptDetail() {
                 {/* Install & Update */}
                 <div className="grid md:grid-cols-2 gap-4">
                     <div className="card h-full flex flex-col">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3"><Download className="w-5 h-5 inline-block mr-1" />{t('scriptDetail.install.title')}</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-1.5"><ArrowDownTrayIcon className="w-5 h-5" />{t('scriptDetail.install.title')}</h3>
 
                         {/* Channel toggle */}
                         {script.canaryVersion && (
@@ -224,20 +256,20 @@ export default function ScriptDetail() {
                         <div className="flex-1 flex items-center">
                             <div className="flex flex-col sm:flex-row gap-2 w-full">
                                 <a href={installUrl} className="btn-primary flex-1 justify-center">
-                                    <Download className="w-4 h-4 inline-block mr-2" />{t('scriptDetail.install.btn')}
+                                    <ArrowDownTrayIcon className="w-4 h-4 mr-2" />{t('scriptDetail.install.btn')}
                                 </a>
                                 <button
                                     className="btn-secondary flex-1 justify-center"
                                     onClick={() => copyToClipboard(`${window.location.origin}${installUrl}`, t('scriptDetail.install.copy'))}
                                 >
-                                    <Clipboard className="w-4 h-4 inline-block mr-2" />{t('scriptDetail.install.copy')}
+                                    <ClipboardIcon className="w-4 h-4 mr-2" />{t('scriptDetail.install.copy')}
                                 </button>
                             </div>
                         </div>
                     </div>
 
                     <div className="card h-full flex flex-col">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3"><Star className="w-5 h-5 inline-block mr-1" />{t('scriptDetail.rating.title')}</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-1.5"><StarIcon className="w-5 h-5" />{t('scriptDetail.rating.title')}</h3>
 
                         {/* Average rating display — clickable to open rating dialog */}
                         {ratingData && (
@@ -294,8 +326,9 @@ export default function ScriptDetail() {
                                                 userRating: result.userRating,
                                             });
                                             setShowRatingDialog(false);
-                                        } catch (err: any) {
-                                            alert(err.message || t('common.error'));
+                                        } catch (err: unknown) {
+                                            const msg = err instanceof Error ? err.message : String(err);
+                                            alert(msg || t('common.error'));
                                         } finally {
                                             setRatingSubmitting(false);
                                         }
@@ -327,7 +360,7 @@ export default function ScriptDetail() {
                     {/* Match patterns */}
                     {matchPatterns.length > 0 && (
                         <div className="card">
-                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2"><Globe className="w-5 h-5 inline-block mr-1" />{t('scriptDetail.metadata.match')}</h3>
+                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-1.5"><GlobeAltIcon className="w-5 h-5" />{t('scriptDetail.metadata.match')}</h3>
                             <div className="space-y-1">
                                 {matchPatterns.map((pattern, i) => (
                                     <code
@@ -344,7 +377,7 @@ export default function ScriptDetail() {
                     {/* Grants */}
                     {grantList.length > 0 && (
                         <div className="card">
-                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2"><Key className="w-5 h-5 inline-block mr-1" />{t('scriptDetail.metadata.grant')}</h3>
+                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-1.5"><KeyIcon className="w-5 h-5" />{t('scriptDetail.metadata.grant')}</h3>
                             <div className="flex flex-wrap gap-1.5">
                                 {grantList.map((g, i) => (
                                     <span
@@ -361,7 +394,7 @@ export default function ScriptDetail() {
                     {/* Requires */}
                     {requireList.length > 0 && (
                         <div className="card">
-                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2"><Package className="w-5 h-5 inline-block mr-1" />{t('scriptDetail.metadata.require')}</h3>
+                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-1.5"><CubeIcon className="w-5 h-5" />{t('scriptDetail.metadata.require')}</h3>
                             <div className="space-y-1">
                                 {requireList.map((req, i) => (
                                     <code
@@ -377,11 +410,11 @@ export default function ScriptDetail() {
                 </div>
 
                 {/* Script description — pure user Markdown */}
-                {(script as any).readme && (
+                {script.readme && (
                     <div className="card">
                         <div className="prose prose-sm max-w-none text-gray-700 dark:text-gray-200">
                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {(script as any).readme}
+                                {script.readme}
                             </ReactMarkdown>
                         </div>
                     </div>
@@ -392,7 +425,7 @@ export default function ScriptDetail() {
                     <div className="card">
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center flex-shrink-0">
-                                <MessageCircle className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+                                <ChatBubbleLeftRightIcon className="w-6 h-6 text-primary-600 dark:text-primary-400" />
                             </div>
                             <div className="flex-1">
                                 <h3 className="font-semibold text-gray-900 dark:text-gray-100">{t('scriptDetail.support.title')}</h3>
@@ -406,7 +439,7 @@ export default function ScriptDetail() {
                                 rel="noopener noreferrer"
                                 className="btn-primary flex-shrink-0"
                             >
-                                <MessageCircle className="w-4 h-4 inline-block mr-2" />
+                                <ChatBubbleLeftRightIcon className="w-4 h-4 mr-2" />
                                 {t('scriptDetail.support.btn')}
                             </a>
                         </div>
@@ -416,7 +449,7 @@ export default function ScriptDetail() {
                 {/* Script code preview — click to load */}
                 <div className="card">
                     <div className="flex items-center justify-between mb-3">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100"><FileText className="w-5 h-5 inline-block mr-1" />{t('scriptDetail.source.title')}</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5"><DocumentTextIcon className="w-5 h-5" />{t('scriptDetail.source.title')}</h3>
                     </div>
                     {showSource ? (
                         <pre className="text-sm bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto max-h-96">
@@ -429,7 +462,7 @@ export default function ScriptDetail() {
                                 onClick={handleLoadSource}
                                 disabled={sourceLoading}
                             >
-                                {sourceLoading ? t('common.loading') : <><FileText className="w-4 h-4 inline-block mr-2" />{t('scriptDetail.source.view')}</>}
+                                {sourceLoading ? t('common.loading') : <><DocumentTextIcon className="w-4 h-4 mr-2" />{t('scriptDetail.source.view')}</>}
                             </button>
                         </div>
                     )}

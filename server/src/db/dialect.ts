@@ -1,6 +1,6 @@
 /**
- * Database dialect detection.
- * Set DB_DIALECT=postgresql in .env to use PostgreSQL, otherwise defaults to SQLite.
+ * 数据库方言检测。
+ * 在 .env 中设置 DB_DIALECT=postgresql 以使用 PostgreSQL，否则默认为 SQLite。
  */
 import { sql } from 'drizzle-orm';
 import { DB_DIALECT } from '../config';
@@ -9,13 +9,13 @@ export type Dialect = 'sqlite' | 'postgresql';
 
 export const dialect: Dialect = DB_DIALECT;
 
-/** SQL helper returns dialect-appropriate timestamp expression */
+/** SQL 辅助函数，返回与方言兼容的时间戳表达式 */
 export function currentTimestamp() {
     switch (dialect) {
         case 'postgresql':
             return sql`NOW()`;
         case 'sqlite':
-            return sql`CURRENT_TIMESTAMP`;
+            return sql`(cast(strftime('%s', 'now') as integer) * 1000)`;
         default:
             throw new Error(`不支持的数据库方言: ${dialect}`);
     }

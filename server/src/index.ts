@@ -6,62 +6,84 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { initDatabase } from './db';
-import { PORT, NODE_ENV, isProd, TRUST_PROXY, CORS_ORIGIN, DEBUG_ENABLED } from './config';
+import { PORT, NODE_ENV, isProd, TRUST_PROXY, CORS_ORIGIN, DEBUG_ENABLED, ADMIN_USERNAME, ADMIN_PASSWORD, API_RATE_LIMIT_WINDOW_MS, API_RATE_LIMIT_MAX, LOGIN_RATE_LIMIT_WINDOW_MS, LOGIN_RATE_LIMIT_MAX, WEBHOOK_RATE_LIMIT_WINDOW_MS, WEBHOOK_RATE_LIMIT_MAX, CAP_RATE_LIMIT_WINDOW_MS, CAP_RATE_LIMIT_MAX } from './config';
 import scriptsRouter from './routes/scripts';
 import statsRouter from './routes/stats';
-import authRouter from './routes/auth';
+import authRouter, { ensureAdmin } from './routes/auth';
 import webhookRouter from './routes/webhook';
 import capRouter from './routes/cap';
 import debugRouter from './routes/debug';
 
+// 扩展 Express Request 类型以支持 webhook 原始请求体
+declare global {
+    namespace Express {
+        interface Request {
+            rawBody?: string;
+        }
+    }
+}
+
 const app = express();
-// Trust reverse proxy (Nginx, Caddy, etc.) so req.ip returns the real client IP
+// 信任反向代理（Nginx、Caddy 等），使 req.ip 返回真实客户端 IP
 app.set('trust proxy', TRUST_PROXY);
 
-// Async startup: sql.js needs to load WASM asynchronously
+// 异步启动：sql.js 需要异步加载 WASM
 async function main() {
-    // Initialize database
+    // 启动前必须提供管理员凭据
+    if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
+        console.error('❌ 必须设置 ADMIN_USERNAME 和 ADMIN_PASSWORD 环境变量');
+        console.error('   示例:');
+        console.error('   ADMIN_USERNAME=admin ADMIN_PASSWORD=your_password npm start');
+        console.error('   或在 .env 文件中添加:');
+        console.error('   ADMIN_USERNAME=admin');
+        console.error('   ADMIN_PASSWORD=your_password');
+        process.exit(1);
+    }
+
+    // 初始化数据库
     await initDatabase();
 
-    // Security headers (helmet)
+    // 通过环境变量初始化管理员账号
+    await ensureAdmin(ADMIN_USERNAME, ADMIN_PASSWORD);
+
+    // 安全头部（helmet）
     app.use(
         helmet({
             crossOriginResourcePolicy: { policy: 'cross-origin' },
-            contentSecurityPolicy: false, // Allow inline styles for Tailwind
+            contentSecurityPolicy: false, // 允许 Tailwind 的内联样式
         }),
     );
 
-    // Rate limiting
+    // 限流
     const apiLimiter = rateLimit({
-        windowMs: 15 * 60 * 1000, // 15 minutes
-        max: 200,
+        windowMs: API_RATE_LIMIT_WINDOW_MS,
+        max: API_RATE_LIMIT_MAX,
         standardHeaders: true,
         legacyHeaders: false,
         message: { error: '请求过于频繁，请稍后再试' },
     });
 
     const loginLimiter = rateLimit({
-        windowMs: 15 * 60 * 1000,
-        max: 10, // 10 attempts per 15 min
+        windowMs: LOGIN_RATE_LIMIT_WINDOW_MS,
+        max: LOGIN_RATE_LIMIT_MAX,
         standardHeaders: true,
         legacyHeaders: false,
         message: { error: '登录尝试过于频繁，请 15 分钟后再试' },
     });
 
-    // CORS
-    const isProd = process.env.NODE_ENV === 'production';
+    // 跨域
     app.use(
         cors({
-            origin: isProd ? process.env.CORS_ORIGIN || 'http://localhost:3000' : true,
+            origin: isProd ? CORS_ORIGIN : true,
             credentials: true,
         }),
     );
 
-    // Capture raw body for webhook signature verification (must be before JSON parsing)
+    // 捕获原始请求体用于 webhook 签名验证（必须在 JSON 解析之前）
     app.use(
         express.json({
             limit: '10mb',
-            verify: (req: any, _res: any, buf: Buffer) => {
+            verify: (req: express.Request, _res: express.Response, buf: Buffer) => {
                 req.rawBody = buf.toString('utf-8');
             },
         }),
@@ -69,17 +91,17 @@ async function main() {
     app.use(express.urlencoded({ extended: true, limit: '10mb' }));
     app.use(cookieParser());
 
-    // Apply rate limiters (webhook and cap excluded from global limiter, but have their own)
+    // 应用限流器（webhook 和 cap 排除在全局限流外，但各自有独立限流）
     const webhookLimiter = rateLimit({
-        windowMs: 60000, // 1 minute
-        max: 60,
+        windowMs: WEBHOOK_RATE_LIMIT_WINDOW_MS,
+        max: WEBHOOK_RATE_LIMIT_MAX,
         standardHeaders: true,
         legacyHeaders: false,
         message: { error: '请求过于频繁，请稍后再试' },
     });
     const capLimiter = rateLimit({
-        windowMs: 60000,
-        max: 30,
+        windowMs: CAP_RATE_LIMIT_WINDOW_MS,
+        max: CAP_RATE_LIMIT_MAX,
         standardHeaders: true,
         legacyHeaders: false,
         message: { error: '请求过于频繁，请稍后再试' },
@@ -89,23 +111,23 @@ async function main() {
     app.use('/api', apiLimiter);
     app.use('/api/auth/login', loginLimiter);
 
-    // API routes
+    // API 路由
     app.use('/api/auth', authRouter);
     app.use('/api/scripts', scriptsRouter);
     app.use('/api/stats', statsRouter);
 
-    // Debug API (only available when DEBUG_ENABLED=true)
+    // Debug API（仅在 DEBUG_ENABLED=true 时可用）
     if (DEBUG_ENABLED) {
         app.use('/api/debug', debugRouter);
         console.log('🔧 Debug API 已启用 (http://localhost:' + PORT + '/api/debug/)');
     }
 
-    // Serve static frontend files (from client/dist)
+    // 提供静态前端文件（来自 client/dist）
     const clientDistPath = path.join(__dirname, '..', '..', 'client', 'dist');
     if (fs.existsSync(clientDistPath)) {
         app.use(express.static(clientDistPath));
 
-        // SPA fallback - serve index.html for all non-API routes
+        // SPA 回退 — 所有非 API 路由返回 index.html
         app.get('*', (_req, res) => {
             if (!_req.path.startsWith('/api/')) {
                 res.sendFile(path.join(clientDistPath, 'index.html'));
@@ -115,7 +137,7 @@ async function main() {
         });
     }
 
-    // Start server
+    // 启动服务器
     app.listen(PORT, () => {
         console.log(`🚀 ScriptShare 服务器已启动: http://localhost:${PORT}`);
     });

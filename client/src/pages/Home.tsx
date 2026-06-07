@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { getOverviewStats, getScripts, OverviewStats, ScriptListItem } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { getLocalizedText } from '../utils/localize';
-import { FileText, Upload, Download, RefreshCw, Trophy, User, ChevronRight, BarChart3 } from 'lucide-react';
+import { DocumentTextIcon, ArrowUpTrayIcon, ArrowDownTrayIcon, ArrowPathIcon, TrophyIcon, UserIcon, ChevronRightIcon, ChartBarIcon } from '@heroicons/react/24/outline';
 import ScriptIcon from '../components/ScriptIcon';
 import StarRating from '../components/StarRating';
 
@@ -25,7 +25,7 @@ export default function Home() {
                 ]);
                 setStats(statsData);
                 setRecentScripts(scriptsData.scripts);
-            } catch (err) {
+            } catch (err: unknown) {
                 console.error(t('common.error'), err);
             } finally {
                 setLoading(false);
@@ -42,8 +42,8 @@ export default function Home() {
                     <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-white/5 blur-3xl" />
                     <div className="absolute -bottom-20 -left-20 w-80 h-80 rounded-full bg-white/5 blur-3xl" />
                     <div className="relative">
-                        <h1 className="text-4xl md:text-5xl font-bold mb-4 tracking-tight">
-                            <FileText className="w-10 h-10 inline-block mr-3 -mt-1" />
+                        <h1 className="text-4xl md:text-5xl font-bold mb-4 tracking-tight flex items-center justify-center gap-3">
+                            <DocumentTextIcon className="w-10 h-10" />
                             ScriptShare
                         </h1>
                         <p className="text-lg md:text-xl text-primary-100 max-w-2xl mx-auto">
@@ -51,7 +51,7 @@ export default function Home() {
                         </p>
                         <div className="flex items-center justify-center gap-4 mt-10">
                             <Link to="/scripts" className="inline-flex items-center rounded-lg bg-white/15 px-6 py-3 text-base font-semibold text-white hover:bg-white/25 backdrop-blur-sm transition-colors">
-                                <BarChart3 className="w-5 h-5 mr-2" />{t('home.hero.browse')}
+                                <ChartBarIcon className="w-5 h-5 mr-2" />{t('home.hero.browse')}
                             </Link>
                         </div>
                     </div>
@@ -92,8 +92,8 @@ export default function Home() {
                 <div className="absolute -bottom-20 -left-20 w-80 h-80 rounded-full bg-white/5 blur-3xl" />
 
                 <div className="relative">
-                    <h1 className="text-4xl md:text-5xl font-bold mb-4 tracking-tight">
-                        <FileText className="w-10 h-10 inline-block mr-3 -mt-1" />
+                    <h1 className="text-4xl md:text-5xl font-bold mb-4 tracking-tight flex items-center justify-center gap-3">
+                        <DocumentTextIcon className="w-10 h-10" />
                         ScriptShare
                     </h1>
                     <p className="text-lg md:text-xl text-primary-100 max-w-2xl mx-auto">
@@ -104,11 +104,11 @@ export default function Home() {
                     <div className="flex items-center justify-center gap-4 mt-10">
                         {isAuthenticated && (
                             <Link to="/upload" className="inline-flex items-center rounded-lg bg-white px-6 py-3 text-base font-semibold text-primary-700 shadow-lg hover:bg-primary-50 transition-colors">
-                                <Upload className="w-5 h-5 mr-2" />{t('home.hero.upload')}
+                                <ArrowUpTrayIcon className="w-5 h-5 mr-2" />{t('home.hero.upload')}
                             </Link>
                         )}
                         <Link to="/scripts" className="inline-flex items-center rounded-lg bg-white/15 px-6 py-3 text-base font-semibold text-white hover:bg-white/25 backdrop-blur-sm transition-colors">
-                            <BarChart3 className="w-5 h-5 mr-2" />{t('home.hero.browse')}
+                            <ChartBarIcon className="w-5 h-5 mr-2" />{t('home.hero.browse')}
                         </Link>
                     </div>
                 </div>
@@ -138,22 +138,22 @@ export default function Home() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="card bg-gradient-to-br from-primary-50 to-blue-50 border-primary-200">
+                        <div className="card bg-gradient-to-br from-primary-50 to-blue-50 dark:from-primary-950 dark:to-blue-950 border-primary-200 dark:border-primary-800">
                             <div className="flex items-center justify-between">
                                 <div>
                                     <div className="text-sm text-primary-700 dark:text-primary-300 font-medium">{t('home.stats.todayInstalls')}</div>
                                     <div className="text-3xl font-bold text-primary-600 dark:text-primary-400 mt-1">{stats.todayInstalls}</div>
                                 </div>
-                                <Download className="w-8 h-8 text-primary-400" />
+                                <ArrowDownTrayIcon className="w-8 h-8 text-primary-400" />
                             </div>
                         </div>
-                        <div className="card bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 dark:border-amber-800">
+                        <div className="card bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950 dark:to-orange-950 border-amber-200 dark:border-amber-700">
                             <div className="flex items-center justify-between">
                                 <div>
                                     <div className="text-sm text-amber-700 dark:text-amber-300 font-medium">{t('home.stats.todayChecks')}</div>
                                     <div className="text-3xl font-bold text-amber-600 dark:text-amber-400 mt-1">{stats.todayUpdates}</div>
                                 </div>
-                                <RefreshCw className="w-8 h-8 text-amber-400" />
+                                <ArrowPathIcon className="w-8 h-8 text-amber-400" />
                             </div>
                         </div>
                     </div>
@@ -165,7 +165,7 @@ export default function Home() {
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{t('home.recent.title')}</h2>
                     <Link to="/scripts" className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 dark:text-primary-300 font-medium">
-                        {t('home.recent.viewAll')} <ChevronRight className="w-4 h-4 inline-block" />
+                        {t('home.recent.viewAll')} <ChevronRightIcon className="w-4 h-4" />
                     </Link>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -173,11 +173,11 @@ export default function Home() {
                         <Link
                             key={script.id}
                             to={`/scripts/${script.id}`}
-                            className="card hover:shadow-md transition-shadow group"
+                            className="card flex flex-col h-full hover:shadow-md transition-shadow group"
                         >
-                            <div className="flex items-start gap-3">
+                            <div className="flex items-start gap-3 flex-1">
                                 <ScriptIcon icon={script.icon} />
-                                <div className="flex-1 min-w-0">
+                                <div className="flex-1 min-w-0 flex flex-col">
                                     <h3 className="font-semibold text-gray-900 dark:text-gray-100 truncate group-hover:text-primary-600 dark:text-primary-400 transition-colors">
                                         {getLocalizedText(script.i18n, 'name', i18n.language, script.name)}
                                     </h3>
@@ -190,12 +190,16 @@ export default function Home() {
                             </div>
                             <div className="flex items-center gap-4 mt-3 text-xs text-gray-400">
                                 <span className="font-mono text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30 px-2 py-0.5 rounded-full text-xs font-semibold">v{script.version}</span>
-                                {script.author && <span><User className="w-3 h-3 inline-block mr-0.5" />{script.author}</span>}
-                                <span><Download className="w-3 h-3 inline-block mr-0.5" />{script.installs}</span>
-                                {script.rating !== undefined && script.rating > 0 && (
+                                {script.author && <span className="inline-flex items-center"><UserIcon className="w-3 h-3 mr-0.5" />{script.author}</span>}
+                                <span className="inline-flex items-center"><ArrowDownTrayIcon className="w-3 h-3 mr-0.5" />{script.installs}</span>
+                                {script.rating !== undefined && script.rating > 0 ? (
                                     <span className="inline-flex items-center gap-1" title={`${script.rating?.toFixed(1)} (${script.ratingCount})`}>
                                         <StarRating value={script.rating} size={12} />
                                         <span className="text-gray-400 text-xs">{script.rating?.toFixed(1)}</span>
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 text-gray-400/60">
+                                        <span className="text-xs">{t('scriptDetail.rating.noRatings')}</span>
                                     </span>
                                 )}
                             </div>
@@ -214,7 +218,7 @@ export default function Home() {
             {stats && stats.topInstalled.length > 0 && (
                 <div className="grid md:grid-cols-2 gap-6">
                     <div className="card">
-                        <h3 className="font-bold text-gray-900 dark:text-gray-100 mb-3"><Trophy className="w-5 h-5 inline-block mr-1 text-amber-500" />{t('home.top.installed')}</h3>
+                        <h3 className="font-bold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-1.5"><TrophyIcon className="w-5 h-5 text-amber-500" />{t('home.top.installed')}</h3>
                         <div className="space-y-2">
                             {stats.topInstalled.map((s, i) => (
                                 <Link
@@ -236,7 +240,7 @@ export default function Home() {
                         </div>
                     </div>
                     <div className="card">
-                        <h3 className="font-bold text-gray-900 dark:text-gray-100 mb-3"><RefreshCw className="w-5 h-5 inline-block mr-1 text-blue-500" />{t('home.top.checked')}</h3>
+                        <h3 className="font-bold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-1.5"><ArrowPathIcon className="w-5 h-5 text-blue-500" />{t('home.top.checked')}</h3>
                         <div className="space-y-2">
                             {stats.topChecked.map((s, i) => (
                                 <Link

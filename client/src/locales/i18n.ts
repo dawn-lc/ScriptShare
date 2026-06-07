@@ -8,13 +8,13 @@ const STORAGE_KEY = 'scriptshare_language';
 /** Map a browser language string to one of our supported locale codes. */
 function mapBrowserLang(browserLang: string): string {
     const lang = browserLang.toLowerCase();
-    // Exact match
+    // 精确匹配
     if (lang === 'zh-cn' || lang === 'zh-hans') return 'zh-CN';
     if (lang === 'en-us') return 'en-US';
-    // Language-only match
+    // 仅匹配语言
     if (lang.startsWith('zh')) return 'zh-CN';
     if (lang.startsWith('en')) return 'en-US';
-    return 'zh-CN'; // default fallback
+    return 'zh-CN'; // 默认回退
 }
 
 function getSavedLang(): string {
@@ -22,7 +22,7 @@ function getSavedLang(): string {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) return stored;
     } catch { /* ignore */ }
-    // Detect browser language
+    // 检测浏览器语言
     if (typeof navigator !== 'undefined' && navigator.language) {
         return mapBrowserLang(navigator.language);
     }

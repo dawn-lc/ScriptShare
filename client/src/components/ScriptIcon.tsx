@@ -1,18 +1,18 @@
 import { useState } from 'react';
-import { FileText } from 'lucide-react';
+import { DocumentTextIcon } from '@heroicons/react/24/outline';
 
 interface ScriptIconProps {
-    /** URL or data URI of the icon (from @icon metadata) */
+    /** 图标的 URL 或 data URI（来自 @icon 元数据） */
     icon?: string | null;
-    /** Icon size in pixels. Default 40 (w-10 h-10). */
+    /** 图标大小（像素）。默认 40（w-10 h-10）。 */
     size?: number;
-    /** Additional class names for the container */
+    /** 容器的额外类名 */
     className?: string;
 }
 
 /**
- * Renders a script icon from its @icon metadata URL.
- * Falls back to a placeholder when no icon is provided or the image fails to load.
+ * 从 @icon 元数据 URL 渲染脚本图标。
+ * 未提供图标或图片加载失败时回退到占位符。
  */
 export default function ScriptIcon({ icon, size = 40, className = '' }: ScriptIconProps) {
     const [imgError, setImgError] = useState(false);
@@ -35,14 +35,14 @@ export default function ScriptIcon({ icon, size = 40, className = '' }: ScriptIc
         );
     }
 
-    // Fallback: colored placeholder with FileText icon
+    // 回退：带文件图标的彩色占位符
     const iconSize = Math.round(size * 0.5);
     return (
         <div
             className={`${containerClass} bg-primary-100 dark:bg-primary-900/30`}
             style={containerStyle}
         >
-            <FileText
+            <DocumentTextIcon
                 className="text-primary-600 dark:text-primary-400"
                 style={{ width: iconSize, height: iconSize }}
             />

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
-import { LogIn, ChevronLeft, Lock } from 'lucide-react';
+import { ArrowRightStartOnRectangleIcon, ChevronLeftIcon, LockClosedIcon } from '@heroicons/react/24/outline';
 
 export default function Login() {
     const { t } = useTranslation();
@@ -14,7 +14,8 @@ export default function Login() {
     const [serverMsg, setServerMsg] = useState<{ type: 'error' | 'success' | 'warning'; text: string } | null>(null);
     const [loading, setLoading] = useState(false);
 
-    const from = (location.state as any)?.from || '/';
+    // React Router v6 中 location.state 类型为 unknown，需要类型断言
+    const from = (location.state as { from?: string })?.from || '/';
 
     if (isAuthenticated) {
         navigate(from, { replace: true });
@@ -34,10 +35,12 @@ export default function Login() {
         try {
             await login(username, password);
             navigate(from, { replace: true });
-        } catch (err: any) {
-            const code = err.code || '';
+        } catch (err: unknown) {
+            // 错误对象可能包含 API 返回的 code 字段，标准 Error 类型不包含此属性
+            const apiErr = err as { code?: string; message?: string };
+            const code = apiErr.code || '';
             let type: 'error' | 'warning' = 'error';
-            let text = err.message || t('login.error.failed');
+            let text = apiErr.message || t('login.error.failed');
             if (code === 'LOGIN_LOCKED') {
                 type = 'warning';
             }
@@ -51,7 +54,7 @@ export default function Login() {
         <div className="min-h-[60vh] flex items-center justify-center">
             <div className="card w-full max-w-md">
                 <div className="text-center mb-6">
-                    <Lock className="w-10 h-10 inline-block text-primary-600 dark:text-primary-400" />
+                    <LockClosedIcon className="w-10 h-10 inline-block text-primary-600 dark:text-primary-400" />
                     <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">{t('login.title')}</h1>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('login.desc')}</p>
                 </div>
@@ -98,7 +101,7 @@ export default function Login() {
                                 {t('login.submitting')}
                             </>
                         ) : (
-                            <><LogIn className="w-5 h-5 inline-block mr-2" />{t('login.submit')}</>
+                            <><ArrowRightStartOnRectangleIcon className="w-5 h-5 mr-2" />{t('login.submit')}</>
                         )}
                     </button>
                 </form>
@@ -108,7 +111,7 @@ export default function Login() {
                         {t('login.noAccount')}<Link to="/register" className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 dark:text-primary-300 font-medium">{t('login.register')}</Link>
                     </p>
                     <Link to="/" className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 dark:text-primary-300 block">
-                        <ChevronLeft className="w-4 h-4 inline-block" /> {t('login.backHome')}
+                        <span className="inline-flex items-center gap-1"><ChevronLeftIcon className="w-4 h-4" /> {t('login.backHome')}</span>
                     </Link>
                 </div>
             </div>

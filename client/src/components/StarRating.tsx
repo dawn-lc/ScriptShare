@@ -1,16 +1,16 @@
 import { useState } from 'react';
-import { Star } from 'lucide-react';
+import { StarIcon } from '@heroicons/react/24/outline';
 
 interface StarRatingProps {
-    /** Current rating value (0-5, supports half stars via 0.5 increments) */
+    /** 当前评分值（0-5，支持 0.5 步进的半星） */
     value: number;
-    /** Total number of ratings */
+    /** 评分总数 */
     count?: number;
-    /** If set, enables interactive rating (user can click to set) */
+    /** 设置后启用交互评分（用户可点击评分） */
     onChange?: (score: number) => void;
-    /** Whether the user has already rated (to disable interaction) */
+    /** 用户是否已评过分（禁用交互） */
     disabled?: boolean;
-    /** Size of each star in pixels */
+    /** 每颗星的大小（像素） */
     size?: number;
 }
 
@@ -42,15 +42,14 @@ export default function StarRating({ value, count, onChange, disabled, size = 16
                             className={`${onChange && !disabled ? 'cursor-pointer hover:scale-110' : 'cursor-default'} transition-transform`}
                             aria-label={`${star} 星`}
                         >
-                            <Star
-                                size={size}
+                            <StarIcon
+                                style={{ width: size, height: size, ...(isHalf ? { clipPath: 'inset(0 50% 0 0)' } : {}) }}
                                 className={`
                                     ${isFull ? 'fill-amber-400 text-amber-400' : ''}
                                     ${isHalf ? 'fill-amber-400/50 text-amber-400' : ''}
                                     ${!isFull && !isHalf ? 'fill-none text-gray-300 dark:text-gray-600' : ''}
                                     ${onChange && !disabled ? 'hover:text-amber-400' : ''}
                                 `}
-                                style={isHalf ? { clipPath: 'inset(0 50% 0 0)' } : undefined}
                             />
                         </button>
                     );

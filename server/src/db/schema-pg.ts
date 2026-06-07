@@ -1,7 +1,7 @@
-import { pgTable, text, integer, real, serial, timestamp, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, real, serial, timestamp, jsonb, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
-// ── users ──
+// ── 用户表 ──
 
 export const users = pgTable('users', {
     id: serial('id').primaryKey(),
@@ -10,14 +10,14 @@ export const users = pgTable('users', {
     passwordHash: text('passwordHash').notNull(),
     avatarUrl: text('avatarUrl').default(''),
     role: text('role').notNull().default('user'),
+    tokenNonce: text('tokenNonce').notNull().default(''),
     createdAt: timestamp('createdAt', { withTimezone: true }).default(sql`NOW()`),
     updatedAt: timestamp('updatedAt', { withTimezone: true }).default(sql`NOW()`),
-    envInfo: text('envInfo').default('{}'),
 }, (table) => [
     index('idx_users_role').on(table.role),
 ]);
 
-// ── scripts ──
+// ── 脚本表 ──
 
 export const scripts = pgTable('scripts', {
     id: serial('id').primaryKey(),
@@ -48,7 +48,7 @@ export const scripts = pgTable('scripts', {
     canaryBranch: text('canaryBranch').default('canary'),
     readme: text('readme').default(''),
     supportURL: text('supportURL').default(''),
-    i18n: text('i18n').default('{}'),
+    i18n: jsonb('i18n').default({}),
     createdAt: timestamp('createdAt', { withTimezone: true }).default(sql`NOW()`),
     updatedAt: timestamp('updatedAt', { withTimezone: true }).default(sql`NOW()`),
 }, (table) => [
@@ -58,7 +58,7 @@ export const scripts = pgTable('scripts', {
     index('idx_scripts_author').on(table.author),
 ]);
 
-// ── install_logs ──
+// ── 安装日志 ──
 
 export const installLogs = pgTable('install_logs', {
     id: serial('id').primaryKey(),
@@ -74,7 +74,7 @@ export const installLogs = pgTable('install_logs', {
     index('idx_install_logs_date').on(table.installedAt),
 ]);
 
-// ── update_logs ──
+// ── 更新日志 ──
 
 export const updateLogs = pgTable('update_logs', {
     id: serial('id').primaryKey(),
@@ -88,14 +88,14 @@ export const updateLogs = pgTable('update_logs', {
     index('idx_update_logs_date').on(table.checkedAt),
 ]);
 
-// ── audit_logs ──
+// ── 审计日志 ──
 
 export const auditLogs = pgTable('audit_logs', {
     id: serial('id').primaryKey(),
     action: text('action').notNull(),
     userId: integer('userId'),
     detail: text('detail').notNull(),
-    metadata: text('metadata').default(''),
+    metadata: jsonb('metadata').default({}),
     createdAt: timestamp('createdAt', { withTimezone: true }).default(sql`NOW()`),
 }, (table) => [
     index('idx_audit_logs_action').on(table.action),
@@ -103,24 +103,7 @@ export const auditLogs = pgTable('audit_logs', {
     index('idx_audit_logs_created').on(table.createdAt),
 ]);
 
-// ── visitor_logs ──
-
-export const visitorLogs = pgTable('visitor_logs', {
-    id: serial('id').primaryKey(),
-    visitorId: text('visitorId').notNull(),
-    action: text('action').notNull(),
-    envScore: real('envScore'),
-    fpConfidence: real('fpConfidence'),
-    ipHash: text('ipHash').default(''),
-    metadata: text('metadata').default(''),
-    createdAt: timestamp('createdAt', { withTimezone: true }).default(sql`NOW()`),
-}, (table) => [
-    index('idx_visitor_logs_vid').on(table.visitorId),
-    index('idx_visitor_logs_vid_act').on(table.visitorId, table.action),
-    index('idx_visitor_logs_time').on(table.createdAt),
-]);
-
-// ── webhook_logs ──
+// ── Webhook 日志 ──
 
 export const webhookLogs = pgTable('webhook_logs', {
     id: serial('id').primaryKey(),
@@ -132,7 +115,7 @@ export const webhookLogs = pgTable('webhook_logs', {
     createdAt: timestamp('createdAt', { withTimezone: true }).default(sql`NOW()`),
 });
 
-// ── ratings ──
+// ── 评分表 ──
 
 export const ratings = pgTable('ratings', {
     id: serial('id').primaryKey(),
@@ -147,16 +130,16 @@ export const ratings = pgTable('ratings', {
     index('idx_ratings_script').on(table.scriptId),
 ]);
 
-// ── cap_challenges (managed by @cap.js/server) ──
+// ── cap_challenges（由 @cap.js/server 管理） ──
 
 export const capChallenges = pgTable('cap_challenges', {
     token: text('token').primaryKey(),
     data: text('data').notNull(),
     expires: integer('expires').notNull(),
-    visitorId: text('visitorId').default(''),
+    createdAt: integer('createdAt'),
 });
 
-// ── cap_tokens (managed by @cap.js/server) ──
+// ── cap_tokens（由 @cap.js/server 管理） ──
 
 export const capTokens = pgTable('cap_tokens', {
     key: text('key').primaryKey(),

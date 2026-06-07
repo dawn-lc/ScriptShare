@@ -7,6 +7,7 @@ import ScriptList from './pages/ScriptList';
 import ScriptDetail from './pages/ScriptDetail';
 import Upload from './pages/Upload';
 import EditScript from './pages/EditScript';
+import ScriptSettings from './pages/ScriptSettings';
 import Stats from './pages/Stats';
 import ScriptStatsPage from './pages/ScriptStatsPage';
 import Login from './pages/Login';
@@ -76,6 +77,7 @@ function App() {
                     }
                 />
                 <Route path="scripts/:id/stats" element={<RequireAuth><ScriptStatsPage /></RequireAuth>} />
+                <Route path="scripts/:id/settings" element={<RequireAuth><ScriptSettings /></RequireAuth>} />
                 <Route
                     path="upload"
                     element={

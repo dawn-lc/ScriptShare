@@ -18,7 +18,7 @@ import {
     Pie,
     Cell,
 } from 'recharts';
-import { BarChart3, TrendingUp, RefreshCw, Globe, Monitor, FileText, Download } from 'lucide-react';
+import { ChartBarIcon, ChartBarSquareIcon, ArrowPathIcon, GlobeAltIcon, ComputerDesktopIcon, DocumentTextIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
 const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
@@ -45,7 +45,7 @@ export default function Stats() {
                     const m = await getMyStats();
                     setMyStats(m);
                 }
-            } catch (err) {
+            } catch (err: unknown) {
                 console.error(t('common.error'), err);
             } finally {
                 setLoading(false);
@@ -62,16 +62,16 @@ export default function Stats() {
         );
     }
 
-    // ── Admin: full platform stats ──
+    // ── 管理员：全平台统计 ──
     if (isAdmin) {
         return (
             <div className="space-y-8">
                 <div className="flex items-center justify-between">
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100"><BarChart3 className="w-6 h-6 inline-block mr-2" />{t('stats.adminTitle')}</h1>
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><ChartBarIcon className="w-6 h-6" />{t('stats.adminTitle')}</h1>
                     <div className="flex gap-2">
                         {[7, 30, 90].map((d) => (
                             <button key={d}
-                                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${period === d ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 dark:text-gray-300 hover:bg-gray-200'}`}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${period === d ? 'bg-primary-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}
                                 onClick={() => setPeriod(d)}>{d} {t('stats.days')}</button>
                         ))}
                     </div>
@@ -89,7 +89,7 @@ export default function Stats() {
                 {trends && (
                     <>
                         <div className="card">
-                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4"><TrendingUp className="w-5 h-5 inline-block mr-1" />{t('stats.installTrend')}</h3>
+                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-1.5"><ChartBarSquareIcon className="w-5 h-5" />{t('stats.installTrend')}</h3>
                             <div className="h-72">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={trends.installTrend.length > 0 ? trends.installTrend : [{ date: t('stats.noData'), count: 0 }]}>
@@ -103,7 +103,7 @@ export default function Stats() {
                             </div>
                         </div>
                         <div className="card">
-                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4"><RefreshCw className="w-5 h-5 inline-block mr-1" />{t('stats.updateTrend')}</h3>
+                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-1.5"><ArrowPathIcon className="w-5 h-5" />{t('stats.updateTrend')}</h3>
                             <div className="h-72">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={trends.updateTrend.length > 0 ? trends.updateTrend : [{ date: t('stats.noData'), count: 0 }]}>
@@ -118,13 +118,13 @@ export default function Stats() {
                         </div>
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="card">
-                                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4"><Globe className="w-5 h-5 inline-block mr-1" />{t('stats.browserDist')}</h3>
+                                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-1.5"><GlobeAltIcon className="w-5 h-5" />{t('stats.browserDist')}</h3>
                                 <div className="h-64">
                                     {trends.browserDistribution.length > 0 ? (
                                         <ResponsiveContainer width="100%" height="100%">
                                             <PieChart>
                                                 <Pie data={trends.browserDistribution} dataKey="count" nameKey="browser" cx="50%" cy="50%" outerRadius={80}
-                                                    label={({ browser, percent }: any) => `${browser} ${(percent * 100).toFixed(0)}%`}>
+                                                    label={({ browser, percent }: { browser: string; percent: number }) => `${browser} ${(percent * 100).toFixed(0)}%`}>
                                                     {trends.browserDistribution.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                                                 </Pie>
                                                 <Tooltip />
@@ -136,13 +136,13 @@ export default function Stats() {
                                 </div>
                             </div>
                             <div className="card">
-                                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4"><Monitor className="w-5 h-5 inline-block mr-1" />{t('stats.osDist')}</h3>
+                                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-1.5"><ComputerDesktopIcon className="w-5 h-5" />{t('stats.osDist')}</h3>
                                 <div className="h-64">
                                     {trends.osDistribution.length > 0 ? (
                                         <ResponsiveContainer width="100%" height="100%">
                                             <PieChart>
                                                 <Pie data={trends.osDistribution} dataKey="count" nameKey="os" cx="50%" cy="50%" outerRadius={80}
-                                                    label={({ os, percent }: any) => `${os} ${(percent * 100).toFixed(0)}%`}>
+                                                    label={({ os, percent }: { os: string; percent: number }) => `${os} ${(percent * 100).toFixed(0)}%`}>
                                                     {trends.osDistribution.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                                                 </Pie>
                                                 <Tooltip />
@@ -160,10 +160,10 @@ export default function Stats() {
         );
     }
 
-    // ── Regular user: own stats ──
+    // ── 普通用户：个人统计 ──
     return (
         <div className="space-y-6">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100"><BarChart3 className="w-6 h-6 inline-block mr-2" />{t('stats.myTitle')}</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><ChartBarIcon className="w-6 h-6" />{t('stats.myTitle')}</h1>
 
             {!myStats ? (
                 <p className="text-sm text-gray-400 py-4 text-center">{t('stats.noData')}</p>
@@ -177,7 +177,7 @@ export default function Stats() {
 
                     {myStats.dailyInstalls.length > 0 && (
                         <div className="card">
-                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4"><TrendingUp className="w-5 h-5 inline-block mr-1" />{t('stats.installTrend')}</h3>
+                            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-1.5"><ChartBarSquareIcon className="w-5 h-5" />{t('stats.installTrend')}</h3>
                             <div className="h-64">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={myStats.dailyInstalls}>
@@ -193,7 +193,7 @@ export default function Stats() {
                     )}
 
                     <div className="card">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3"><FileText className="w-5 h-5 inline-block mr-1" />{t('stats.myScripts')}</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-1.5"><DocumentTextIcon className="w-5 h-5" />{t('stats.myScripts')}</h3>
                         <div className="space-y-2">
                             {myStats.scripts.map((s) => (
                                 <Link key={s.id} to={`/scripts/${s.id}`} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 dark:bg-gray-800">
@@ -202,8 +202,8 @@ export default function Stats() {
                                         <span className="text-xs font-mono text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30 px-2 py-0.5 rounded-full font-semibold">v{s.version}</span>
                                     </div>
                                     <div className="flex items-center gap-4 text-xs text-gray-400">
-                                        <span><Download className="w-3 h-3 inline-block mr-0.5" />{s.installs}</span>
-                                        <span><RefreshCw className="w-3 h-3 inline-block mr-0.5" />{s.updateChecks}</span>
+                                        <span className="inline-flex items-center gap-1"><ArrowDownTrayIcon className="w-3 h-3" />{s.installs}</span>
+                                        <span className="inline-flex items-center gap-1"><ArrowPathIcon className="w-3 h-3" />{s.updateChecks}</span>
                                     </div>
                                 </Link>
                             ))}

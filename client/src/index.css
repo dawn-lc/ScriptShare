@@ -11,6 +11,32 @@
     }
 }
 
+@layer utilities {
+    /* 确保图标 SVG 默认 inline-block，防止 preflight 的 display: block 破坏行内布局 */
+    svg.w-3.h-3,
+    svg.w-4.h-4,
+    svg.w-5.h-5,
+    svg.w-6.h-6 {
+        display: inline-block;
+    }
+
+    /* Recharts 图表悬浮提示深色模式 */
+    .dark .recharts-default-tooltip {
+        background-color: #1f2937 !important;
+        border-color: #374151 !important;
+    }
+    .dark .recharts-tooltip-label {
+        color: #f3f4f6 !important;
+    }
+    .dark .recharts-tooltip-item {
+        color: #d1d5db !important;
+    }
+    .dark .recharts-tooltip-item-name,
+    .dark .recharts-tooltip-item-separator {
+        color: #9ca3af !important;
+    }
+}
+
 @layer components {
     .btn-primary {
         @apply inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-lg

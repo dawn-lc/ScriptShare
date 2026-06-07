@@ -6,7 +6,7 @@ interface AuthContextType {
     user: UserInfo | null;
     loading: boolean;
     login: (username: string, password: string) => Promise<void>;
-    register: (username: string, password: string, displayName?: string, captchaToken?: string, captchaAnswer?: string, env?: { score: number; label: string; isBot: boolean; visitorId?: string; fpConfidence?: number }) => Promise<void>;
+    register: (username: string, password: string, displayName?: string, captchaToken?: string) => Promise<void>;
     logout: () => Promise<void>;
 }
 
@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const isAuthenticated = !!user;
 
-    // Check auth status on mount
+    // 挂载时检查登录状态
     useEffect(() => {
         async function check() {
             try {
@@ -45,8 +45,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(result.user);
     }, []);
 
-    const register = useCallback(async (username: string, password: string, displayName?: string, captchaToken?: string, captchaAnswer?: string, env?: { score: number; label: string; isBot: boolean; visitorId?: string; fpConfidence?: number }) => {
-        const result = await apiRegister({ username, password, displayName, captchaToken, captchaAnswer, envScore: env?.score, envLabel: env?.label, isBot: env?.isBot, visitorId: env?.visitorId, fpConfidence: env?.fpConfidence });
+    const register = useCallback(async (username: string, password: string, displayName?: string, captchaToken?: string) => {
+        const result = await apiRegister({ username, password, displayName, captchaToken });
         setUser(result.user);
     }, []);
 

@@ -1,5 +1,25 @@
-﻿import { sqliteTable, text, integer, real, index, uniqueIndex, primaryKey } from 'drizzle-orm/sqlite-core';
+﻿import { sqliteTable, text, integer, real, index, uniqueIndex, primaryKey, customType } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
+
+/**
+ * SQLite 整数时间戳（毫秒）⇔ JS Date 透明映射。
+ * 与 PostgreSQL 的 timestamp 列返回 Date 对象的行为一致。
+ */
+const timestampMs = customType<{ data: Date; driverData: number }>({
+    dataType() { return 'integer' },
+    fromDriver(value: number): Date { return new Date(value) },
+    toDriver(value: Date): number { return value.getTime() },
+});
+
+/**
+ * SQLite text 存储 JSON ⇔ JS 对象透明映射。
+ * 与 PostgreSQL 的 jsonb 列返回对象的行为一致。
+ */
+const jsonField = customType<{ data: Record<string, unknown>; driverData: string }>({
+    dataType() { return 'text' },
+    fromDriver(value: string): Record<string, unknown> { return JSON.parse(value) },
+    toDriver(value: Record<string, unknown>): string { return JSON.stringify(value) },
+});
 
 // ── users ──
 
@@ -10,9 +30,9 @@ export const users = sqliteTable('users', {
     passwordHash: text('passwordHash').notNull(),
     avatarUrl: text('avatarUrl').default(''),
     role: text('role').notNull().default('user'),
-    createdAt: text('createdAt').default(sql`CURRENT_TIMESTAMP`),
-    updatedAt: text('updatedAt').default(sql`CURRENT_TIMESTAMP`),
-    envInfo: text('envInfo').default(''),
+    tokenNonce: text('tokenNonce').notNull().default(''),
+    createdAt: timestampMs('createdAt').default(sql`(cast(strftime('%s', 'now') as integer) * 1000)`),
+    updatedAt: timestampMs('updatedAt').default(sql`(cast(strftime('%s', 'now') as integer) * 1000)`),
 }, (table) => [
     index('idx_users_role').on(table.role),
 ]);
@@ -48,9 +68,9 @@ export const scripts = sqliteTable('scripts', {
     canaryBranch: text('canaryBranch').default('canary'),
     readme: text('readme').default(''),
     supportURL: text('supportURL').default(''),
-    i18n: text('i18n').default('{}'),
-    createdAt: text('createdAt').default(sql`CURRENT_TIMESTAMP`),
-    updatedAt: text('updatedAt').default(sql`CURRENT_TIMESTAMP`),
+    i18n: jsonField('i18n').default({}),
+    createdAt: timestampMs('createdAt').default(sql`(cast(strftime('%s', 'now') as integer) * 1000)`),
+    updatedAt: timestampMs('updatedAt').default(sql`(cast(strftime('%s', 'now') as integer) * 1000)`),
 }, (table) => [
     index('idx_scripts_userId').on(table.userId),
     index('idx_scripts_name').on(table.name),
@@ -68,7 +88,7 @@ export const installLogs = sqliteTable('install_logs', {
     browser: text('browser').default(''),
     os: text('os').default(''),
     device: text('device').default(''),
-    installedAt: text('installedAt').default(sql`CURRENT_TIMESTAMP`),
+    installedAt: timestampMs('installedAt').default(sql`(cast(strftime('%s', 'now') as integer) * 1000)`),
 }, (table) => [
     index('idx_install_logs_script').on(table.scriptId),
     index('idx_install_logs_date').on(table.installedAt),
@@ -82,7 +102,7 @@ export const updateLogs = sqliteTable('update_logs', {
     oldVersion: text('oldVersion'),
     newVersion: text('newVersion'),
     ipHash: text('ipHash'),
-    checkedAt: text('checkedAt').default(sql`CURRENT_TIMESTAMP`),
+    checkedAt: timestampMs('checkedAt').default(sql`(cast(strftime('%s', 'now') as integer) * 1000)`),
 }, (table) => [
     index('idx_update_logs_script').on(table.scriptId),
     index('idx_update_logs_date').on(table.checkedAt),
@@ -95,29 +115,12 @@ export const auditLogs = sqliteTable('audit_logs', {
     action: text('action').notNull(),
     userId: integer('userId'),
     detail: text('detail').notNull(),
-    metadata: text('metadata'),
-    createdAt: text('createdAt').default(sql`CURRENT_TIMESTAMP`),
+    metadata: jsonField('metadata'),
+    createdAt: timestampMs('createdAt').default(sql`(cast(strftime('%s', 'now') as integer) * 1000)`),
 }, (table) => [
     index('idx_audit_logs_action').on(table.action),
     index('idx_audit_logs_user').on(table.userId),
     index('idx_audit_logs_created').on(table.createdAt),
-]);
-
-// ── visitor_logs ──
-
-export const visitorLogs = sqliteTable('visitor_logs', {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    visitorId: text('visitorId').notNull(),
-    action: text('action').notNull(),
-    envScore: real('envScore'),
-    fpConfidence: real('fpConfidence'),
-    ipHash: text('ipHash').default(''),
-    metadata: text('metadata').default(''),
-    createdAt: text('createdAt').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => [
-    index('idx_visitor_logs_vid').on(table.visitorId),
-    index('idx_visitor_logs_vid_act').on(table.visitorId, table.action),
-    index('idx_visitor_logs_time').on(table.createdAt),
 ]);
 
 // ── webhook_logs ──
@@ -129,7 +132,7 @@ export const webhookLogs = sqliteTable('webhook_logs', {
     action: text('action').notNull().default(''),
     summary: text('summary').default(''),
     detail: text('detail').default(''),
-    createdAt: text('createdAt').default(sql`CURRENT_TIMESTAMP`),
+    createdAt: timestampMs('createdAt').default(sql`(cast(strftime('%s', 'now') as integer) * 1000)`),
 });
 
 // ── ratings ──
@@ -140,8 +143,8 @@ export const ratings = sqliteTable('ratings', {
     userId: integer('userId').notNull().references(() => users.id, { onDelete: 'cascade' }),
     score: integer('score').notNull(), // 1-5
     comment: text('comment').default(''),
-    createdAt: text('createdAt').default(sql`CURRENT_TIMESTAMP`),
-    updatedAt: text('updatedAt').default(sql`CURRENT_TIMESTAMP`),
+    createdAt: timestampMs('createdAt').default(sql`(cast(strftime('%s', 'now') as integer) * 1000)`),
+    updatedAt: timestampMs('updatedAt').default(sql`(cast(strftime('%s', 'now') as integer) * 1000)`),
 }, (table) => [
     uniqueIndex('idx_ratings_script_user').on(table.scriptId, table.userId),
     index('idx_ratings_script').on(table.scriptId),
@@ -153,7 +156,7 @@ export const capChallenges = sqliteTable('cap_challenges', {
     token: text('token').primaryKey(),
     data: text('data').notNull(),
     expires: integer('expires').notNull(),
-    visitorId: text('visitorId').default(''),
+    createdAt: integer('createdAt'),
 });
 
 // ── cap_tokens (managed by @cap.js/server) ──

@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { updateProfile, changePassword } from '../api';
 import { changeLanguage, LANGUAGES } from '../locales/i18n';
 import { getThemeMode, setThemeMode, type ThemeMode } from '../utils/theme';
-import { Save, Lock, User, Globe, Sun, Moon, Monitor, CheckCircle, AlertCircle, LogOut } from 'lucide-react';
+import { DocumentArrowDownIcon, LockClosedIcon, UserIcon, GlobeAltIcon, SunIcon, MoonIcon, ComputerDesktopIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowRightEndOnRectangleIcon } from '@heroicons/react/24/outline';
 
 export default function Settings() {
     const { t, i18n } = useTranslation();
@@ -15,19 +15,19 @@ export default function Settings() {
         return <Navigate to="/login" state={{ from: '/settings' }} replace />;
     }
 
-    // Profile form
+    // 资料表单
     const [displayName, setDisplayName] = useState(user?.displayName || '');
     const [profileSaving, setProfileSaving] = useState(false);
     const [profileMsg, setProfileMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-    // Password form
+    // 密码表单
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [passwordSaving, setPasswordSaving] = useState(false);
     const [passwordMsg, setPasswordMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-    // Theme
+    // 主题
     const [themeMode, setThemeState] = useState<ThemeMode>(getThemeMode());
     function handleThemeChange(mode: ThemeMode) {
         setThemeMode(mode);
@@ -47,8 +47,9 @@ export default function Settings() {
         try {
             const result = await updateProfile({ displayName: displayName.trim() });
             setProfileMsg({ type: 'success', text: t('settings.profile.saved') });
-        } catch (err: any) {
-            setProfileMsg({ type: 'error', text: err.message || t('common.error') });
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setProfileMsg({ type: 'error', text: msg || t('common.error') });
         } finally {
             setProfileSaving(false);
         }
@@ -78,18 +79,19 @@ export default function Settings() {
             setCurrentPassword('');
             setNewPassword('');
             setConfirmPassword('');
-            // Force logout after short delay so user sees success message
+            // 短暂延迟后强制登出，让用户看到成功消息
             setTimeout(() => logout(), 1500);
-        } catch (err: any) {
-            setPasswordMsg({ type: 'error', text: err.message || t('common.error') });
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setPasswordMsg({ type: 'error', text: msg || t('common.error') });
         } finally {
             setPasswordSaving(false);
         }
     }
 
     return (
-        <div className="space-y-8 max-w-2xl mx-auto">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100"><User className="w-6 h-6 inline-block mr-2" />{t('settings.title')}</h1>
+        <div className="space-y-6">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><UserIcon className="w-6 h-6" />{t('settings.title')}</h1>
 
             {/* Account info */}
             <div className="card">
@@ -108,7 +110,7 @@ export default function Settings() {
 
             {/* Display name */}
             <div className="card">
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4"><User className="w-5 h-5 inline-block mr-1" />{t('settings.profile.title')}</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-1.5"><UserIcon className="w-5 h-5" />{t('settings.profile.title')}</h3>
                 <form onSubmit={handleProfileSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">{t('register.displayName')}</label>
@@ -126,20 +128,22 @@ export default function Settings() {
                             ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400'
                             : 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400'
                             }`}>
-                            {profileMsg.type === 'success' ? <CheckCircle className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+                            {profileMsg.type === 'success' ? <CheckCircleIcon className="w-4 h-4 flex-shrink-0" /> : <ExclamationCircleIcon className="w-4 h-4 flex-shrink-0" />}
                             {profileMsg.text}
                         </div>
                     )}
 
-                    <button type="submit" className="btn-primary" disabled={profileSaving}>
-                        {profileSaving ? t('common.loading') : <><Save className="w-4 h-4 inline-block mr-1" />{t('common.save')}</>}
-                    </button>
+                    <div className="flex justify-end">
+                        <button type="submit" className="btn-primary" disabled={profileSaving}>
+                            {profileSaving ? t('common.loading') : <><DocumentArrowDownIcon className="w-4 h-4 mr-1" />{t('common.save')}</>}
+                        </button>
+                    </div>
                 </form>
             </div>
 
             {/* Change password */}
             <div className="card">
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4"><Lock className="w-5 h-5 inline-block mr-1" />{t('settings.password.title')}</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-1.5"><LockClosedIcon className="w-5 h-5" />{t('settings.password.title')}</h3>
                 <form onSubmit={handlePasswordSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">{t('settings.password.current')}</label>
@@ -177,20 +181,22 @@ export default function Settings() {
                             ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400'
                             : 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400'
                             }`}>
-                            {passwordMsg.type === 'success' ? <CheckCircle className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+                            {passwordMsg.type === 'success' ? <CheckCircleIcon className="w-4 h-4 flex-shrink-0" /> : <ExclamationCircleIcon className="w-4 h-4 flex-shrink-0" />}
                             {passwordMsg.text}
                         </div>
                     )}
 
-                    <button type="submit" className="btn-primary" disabled={passwordSaving}>
-                        {passwordSaving ? t('common.loading') : <><Lock className="w-4 h-4 inline-block mr-1" />{t('settings.password.submit')}</>}
-                    </button>
+                    <div className="flex justify-end">
+                        <button type="submit" className="btn-primary" disabled={passwordSaving}>
+                            {passwordSaving ? t('common.loading') : <><LockClosedIcon className="w-4 h-4 mr-1" />{t('settings.password.submit')}</>}
+                        </button>
+                    </div>
                 </form>
             </div>
 
             {/* Language selector */}
             <div className="card">
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4"><Globe className="w-5 h-5 inline-block mr-1" />{t('settings.language.title')}</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-1.5"><GlobeAltIcon className="w-5 h-5" />{t('settings.language.title')}</h3>
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">{t('settings.language.label')}</label>
                     <select
@@ -209,15 +215,15 @@ export default function Settings() {
 
             {/* Theme selector */}
             <div className="card">
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4"><Sun className="w-5 h-5 inline-block mr-1" />{t('settings.theme.title')}</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-1.5"><SunIcon className="w-5 h-5" />{t('settings.theme.title')}</h3>
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">{t('settings.theme.label')}</label>
                     <div className="flex flex-wrap gap-3">
                         {([
-                            { mode: 'light' as ThemeMode, icon: Sun, label: t('settings.theme.light') },
-                            { mode: 'dark' as ThemeMode, icon: Moon, label: t('settings.theme.dark') },
-                            { mode: 'system' as ThemeMode, icon: Monitor, label: t('settings.theme.system') },
-                        ]).map(({ mode, icon: Icon, label }) => (
+                            { mode: 'light' as const, icon: SunIcon, label: t('settings.theme.light') },
+                            { mode: 'dark' as const, icon: MoonIcon, label: t('settings.theme.dark') },
+                            { mode: 'system' as const, icon: ComputerDesktopIcon, label: t('settings.theme.system') },
+                        ] as const).map(({ mode, icon: Icon, label }) => (
                             <button
                                 key={mode}
                                 type="button"

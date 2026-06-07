@@ -18,6 +18,8 @@ export interface Script {
     connect: string;
     code?: string;
     filename: string;
+    userId?: number | null;
+    readme?: string;
     supportURL?: string;
     installs: number;
     updateChecks: number;
@@ -82,6 +84,8 @@ export interface ScriptStats {
     dailyUpdates: { date: string; count: number }[];
     browserStats: { browser: string; count: number }[];
     osStats: { os: string; count: number }[];
+    webhookLogs?: { id: number; event: string; action: string; summary?: string; detail?: string; createdAt?: string }[];
+    auditLogs?: { id: number; action: string; detail?: string; metadata?: string; createdAt?: string }[];
 }
 
 export interface TrendsData {
@@ -92,6 +96,16 @@ export interface TrendsData {
     osDistribution: { os: string; count: number }[];
 }
 
+/** API 错误响应，可能包含详细的字段级错误信息 */
+export class ApiError extends Error {
+    details?: string[];
+    constructor(message: string, details?: string[]) {
+        super(message);
+        this.name = 'ApiError';
+        this.details = details;
+    }
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
     const res = await fetch(`${API_BASE}${url}`, {
         headers: { 'Content-Type': 'application/json' },
@@ -99,14 +113,14 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     });
 
     if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'request_failed' }));
-        throw new Error(err.error || `HTTP ${res.status}`);
+        const body = await res.json().catch(() => ({ error: 'request_failed' }));
+        throw new ApiError(body.error || `HTTP ${res.status}`, body.details);
     }
 
     return res.json();
 }
 
-// Script APIs
+// ── 脚本 API ──
 export function getScripts(params?: { page?: number; limit?: number; search?: string; sort?: string; order?: string }) {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', String(params.page));
@@ -127,7 +141,7 @@ export function getScriptCode(id: number, channel?: string) {
     return `${API_BASE}/scripts/${id}${prefix}/code`;
 }
 
-// ── User / Auth types ──
+// ── 用户 / 认证类型 ──
 
 export interface UserInfo {
     id: number;
@@ -144,20 +158,12 @@ export interface AuthStatus {
     user: UserInfo | null;
 }
 
-// ── Auth APIs ──
+// ── 认证 API ──
 
-
-export async function fetchCaptcha(envScore?: number): Promise<{ token: string; prefix: string; difficulty: number }> {
-    const params = envScore !== undefined ? `?envScore=${envScore}` : '';
-    const res = await fetch(`${API_BASE}/auth/captcha${params}`);
-    return res.json();
-}
 
 export async function register(data: {
     username: string; password: string; displayName?: string;
-    captchaToken?: string; captchaAnswer?: string;
-    envScore?: number; envLabel?: string; isBot?: boolean;
-    visitorId?: string; fpConfidence?: number;
+    captchaToken?: string;
 }): Promise<{ message: string; user: UserInfo }> {
     const res = await fetch(`${API_BASE}/auth/register`, {
         method: 'POST',
@@ -214,7 +220,7 @@ export function getUpdateUrl(id: number, channel?: string) {
 
 
 
-// ── Ratings ──
+// ── 评分 ──
 
 export function getScriptRatings(id: number): Promise<RatingData> {
     return request(`/scripts/${id}/ratings`);
@@ -240,15 +246,21 @@ export function checkUpdate(id: number, version: string) {
     }>(`/scripts/${id}/check-update?version=${encodeURIComponent(version)}`);
 }
 
+export interface MetadataWarning {
+    field: string;
+    type: 'missing' | 'security' | 'consistency' | 'best-practice';
+    message: string;
+}
+
 export function createScript(code: string, filename?: string, readme?: string) {
-    return request<{ message: string; script: Script }>('/scripts', {
+    return request<{ message: string; script: Script; warnings?: MetadataWarning[] }>('/scripts', {
         method: 'POST',
         body: JSON.stringify({ code, filename, readme }),
     });
 }
 
 export function updateScript(id: number, code: string, readme?: string) {
-    return request<{ message: string; script: Script }>(`/scripts/${id}`, {
+    return request<{ message: string; script: Script; warnings?: MetadataWarning[] }>(`/scripts/${id}`, {
         method: 'PUT',
         body: JSON.stringify({ code, readme }),
     });
@@ -285,7 +297,7 @@ export function updateGithubConfig(id: number, config: { githubRepo?: string; gi
     });
 }
 
-// Stats APIs
+// ── 统计 API ──
 export function getOverviewStats() {
     return request<OverviewStats>('/stats/overview');
 }
@@ -298,7 +310,7 @@ export function getTrends(days: number = 30) {
     return request<TrendsData>(`/stats/trends?days=${days}`);
 }
 
-// ── My stats (script owner) ──
+// ── 我的统计（脚本所有者） ──
 
 export interface MyStatsResponse {
     totalScripts: number;
@@ -313,7 +325,7 @@ export function getMyStats() {
     return request<MyStatsResponse>('/stats/my');
 }
 
-// ── Admin APIs ──
+// ── 管理员 API ──
 
 export interface AdminUserRow {
     id: number;
@@ -323,7 +335,6 @@ export interface AdminUserRow {
     avatarUrl: string;
     createdAt: string;
     scriptCount: number;
-    envInfo?: string; // JSON string
 }
 
 export interface AuditLogEntry {
@@ -370,8 +381,12 @@ export function getAdminWebhookLogs(limit?: number) {
     return request<{ logs: WebhookLogEntry[] }>(`/stats/admin/webhook-logs${limit ? `?limit=${limit}` : ''}`);
 }
 
-export function getAdminAuditLogs(limit?: number) {
-    return request<{ logs: AuditLogEntry[] }>(`/stats/admin/audit-logs${limit ? `?limit=${limit}` : ''}`);
+export function getAdminAuditLogs(limit?: number, offset?: number) {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', String(limit));
+    if (offset) params.set('offset', String(offset));
+    const qs = params.toString();
+    return request<{ logs: AuditLogEntry[]; total: number; hasMore: boolean }>(`/stats/admin/audit-logs${qs ? `?${qs}` : ''}`);
 }
 
 export function getAdminSystem() {
@@ -380,9 +395,8 @@ export function getAdminSystem() {
 
 // ── Cap CAPTCHA API ──
 
-export async function createCapChallenge(envScore?: number): Promise<{ challenge: { c: number; s: number; d: number }; token: string; expires: number }> {
-    const params = envScore !== undefined ? `?envScore=${envScore}` : '';
-    const res = await fetch(`${API_BASE}/cap/challenge${params}`, { method: 'POST' });
+export async function createCapChallenge(): Promise<{ challenge: { c: number; s: number; d: number }; token: string; expires: number }> {
+    const res = await fetch(`${API_BASE}/cap/challenge`, { method: 'POST' });
     return res.json();
 }
 
@@ -395,7 +409,7 @@ export async function redeemCapChallenge(token: string, solutions: string[]): Pr
     return res.json();
 }
 
-// ── User Settings API ──
+// ── 用户设置 API ──
 
 export async function updateProfile(data: { displayName?: string }): Promise<{ user: UserInfo }> {
     const res = await fetch(`${API_BASE}/auth/me`, {

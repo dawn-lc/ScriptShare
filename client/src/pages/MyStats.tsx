@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { getMyStats, type MyStatsResponse } from '../api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getLocalizedText } from '../utils/localize';
-import { Inbox, BarChart3, FileText, Download, RefreshCw, TrendingUp, ChevronRight } from 'lucide-react';
+import { InboxIcon, ChartBarIcon, DocumentTextIcon, ArrowDownTrayIcon, ArrowPathIcon, ChartBarSquareIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 
 export default function MyStats() {
     const { t, i18n } = useTranslation();
@@ -35,7 +35,7 @@ export default function MyStats() {
     if (!stats) {
         return (
             <div className="text-center py-20 text-gray-400">
-                <p className="text-5xl mb-4"><Inbox className="w-12 h-12 inline-block text-gray-300" /></p>
+                <p className="text-5xl mb-4"><InboxIcon className="w-12 h-12 inline-block text-gray-300" /></p>
                 <p className="text-lg">{t('myStats.empty')}</p>
             </div>
         );
@@ -43,7 +43,7 @@ export default function MyStats() {
 
     return (
         <div className="space-y-6">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100"><BarChart3 className="w-6 h-6 inline-block mr-2" />{t('myStats.title')}</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><ChartBarIcon className="w-6 h-6" />{t('myStats.title')}</h1>
 
             <div className="grid grid-cols-3 gap-4">
                 <div className="card text-center">
@@ -62,7 +62,7 @@ export default function MyStats() {
 
             {stats.dailyInstalls.length > 0 && (
                 <div className="card">
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4"><TrendingUp className="w-5 h-5 inline-block mr-1" />{t('myStats.trend.title')}</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-1.5"><ChartBarSquareIcon className="w-5 h-5" />{t('myStats.trend.title')}</h3>
                     <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={stats.dailyInstalls}>
@@ -78,7 +78,7 @@ export default function MyStats() {
             )}
 
             <div className="card">
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3"><FileText className="w-5 h-5 inline-block mr-1" />{t('myStats.scripts.title')}</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-1.5"><DocumentTextIcon className="w-5 h-5" />{t('myStats.scripts.title')}</h3>
                 {stats.scripts.length === 0 ? (
                     <p className="text-sm text-gray-400 py-4 text-center">{t('myStats.scripts.empty')}</p>
                 ) : (
@@ -94,10 +94,10 @@ export default function MyStats() {
                                     <span className="text-xs font-mono text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30 px-2 py-0.5 rounded-full font-semibold">v{s.version}</span>
                                 </div>
                                 <div className="flex items-center gap-4 text-xs text-gray-400">
-                                    <span><Download className="w-3 h-3 inline-block mr-0.5" />{s.installs}</span>
-                                    <span><RefreshCw className="w-3 h-3 inline-block mr-0.5" />{s.updateChecks}</span>
+                                    <span className="inline-flex items-center gap-1"><ArrowDownTrayIcon className="w-3 h-3" />{s.installs}</span>
+                                    <span className="inline-flex items-center gap-1"><ArrowPathIcon className="w-3 h-3" />{s.updateChecks}</span>
                                     <Link to={`/scripts/${s.id}/stats`} className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 dark:text-primary-300 font-medium">
-                                        {t('myStats.scripts.stats')} <ChevronRight className="w-3 h-3 inline-block" />
+                                        {t('myStats.scripts.stats')} <ChevronRightIcon className="w-3 h-3" />
                                     </Link>
                                 </div>
                             </Link>

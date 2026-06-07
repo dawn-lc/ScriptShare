@@ -1,25 +1,11 @@
-﻿import { useEffect, useState } from 'react';
+﻿import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { getAdminUsers, getAdminWebhookLogs, getAdminAuditLogs, getAdminSystem, type AdminUserRow, type WebhookLogEntry, type AuditLogEntry, type AdminSystemInfo } from '../api';
-import { Bot, Monitor, BarChart3, Users, Link2, ClipboardList, Settings, Database, Package, Sparkles, Download, Trash2 } from 'lucide-react';
+import { ChartBarIcon, UsersIcon, LinkIcon, ClipboardDocumentListIcon, Cog6ToothIcon, CircleStackIcon, CubeIcon, SparklesIcon, ArrowDownTrayIcon, TrashIcon, ComputerDesktopIcon } from '@heroicons/react/24/outline';
 
-function renderEnvInfo(envInfo?: string): React.ReactNode {
-    if (!envInfo) return <span className="text-xs text-gray-400">—</span>;
-    try {
-        const info = JSON.parse(envInfo);
-        const { score, label, isBot } = info;
-        const isSuspicious = isBot || (typeof score === 'number' && score >= 3);
-        return (
-            <span className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-medium ${isSuspicious ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400' : 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400'}`}>
-                {isSuspicious ? <Bot className="w-3.5 h-3.5" /> : <Monitor className="w-3.5 h-3.5" />} {label || (score != null ? `score ${score}` : '—')}
-            </span>
-        );
-    } catch {
-        return <span className="text-xs text-gray-400">—</span>;
-    }
-}
+const AUDIT_PAGE_SIZE = 50;
 
 export default function Admin() {
     const { t } = useTranslation();
@@ -32,10 +18,16 @@ export default function Admin() {
     const [users, setUsers] = useState<AdminUserRow[]>([]);
     const [logs, setLogs] = useState<WebhookLogEntry[]>([]);
     const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+    const [auditHasMore, setAuditHasMore] = useState(false);
+    const [auditTotal, setAuditTotal] = useState(0);
+    const [auditLoadingMore, setAuditLoadingMore] = useState(false);
     const [sys, setSys] = useState<AdminSystemInfo | null>(null);
     const [tab, setTab] = useState<'overview' | 'users' | 'webhook' | 'audit'>('overview');
     const [loading, setLoading] = useState(true);
 
+    const sentinelRef = useRef<HTMLDivElement>(null);
+
+    // 初始加载
     useEffect(() => {
         async function load() {
             try {
@@ -43,13 +35,15 @@ export default function Admin() {
                     getAdminSystem(),
                     getAdminUsers(),
                     getAdminWebhookLogs(30),
-                    getAdminAuditLogs(50),
+                    getAdminAuditLogs(AUDIT_PAGE_SIZE, 0),
                 ]);
                 setSys(sysData);
                 setUsers(usersData.users);
                 setLogs(logsData.logs);
                 setAuditLogs(auditData.logs);
-            } catch (err) {
+                setAuditTotal(auditData.total);
+                setAuditHasMore(auditData.hasMore);
+            } catch (err: unknown) {
                 console.error(t('common.error'), err);
             } finally {
                 setLoading(false);
@@ -57,6 +51,39 @@ export default function Admin() {
         }
         load();
     }, []);
+
+    // 加载更多审计日志
+    const loadMoreAuditLogs = useCallback(async () => {
+        if (auditLoadingMore || !auditHasMore) return;
+        setAuditLoadingMore(true);
+        try {
+            const data = await getAdminAuditLogs(AUDIT_PAGE_SIZE, auditLogs.length);
+            setAuditLogs(prev => [...prev, ...data.logs]);
+            setAuditHasMore(data.hasMore);
+        } catch (err: unknown) {
+            console.error(t('common.error'), err);
+        } finally {
+            setAuditLoadingMore(false);
+        }
+    }, [auditLoadingMore, auditHasMore, auditLogs.length]);
+
+    // IntersectionObserver 监听滚动到底部
+    useEffect(() => {
+        if (tab !== 'audit') return;
+        const sentinel = sentinelRef.current;
+        if (!sentinel) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    loadMoreAuditLogs();
+                }
+            },
+            { rootMargin: '200px' }
+        );
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [tab, loadMoreAuditLogs]);
 
     if (loading) {
         return (
@@ -67,16 +94,16 @@ export default function Admin() {
     }
 
     const tabs = [
-        { key: 'overview' as const, label: <><BarChart3 className="w-4 h-4 inline-block mr-1" />{t('admin.tabs.overview')}</> },
-        { key: 'users' as const, label: <><Users className="w-4 h-4 inline-block mr-1" />{t('admin.tabs.users')}</> },
-        { key: 'webhook' as const, label: <><Link2 className="w-4 h-4 inline-block mr-1" />{t('admin.tabs.webhook')}</> },
-        { key: 'audit' as const, label: <><ClipboardList className="w-4 h-4 inline-block mr-1" />{t('admin.tabs.audit')}</> },
+        { key: 'overview' as const, label: <><ChartBarIcon className="w-4 h-4" />{t('admin.tabs.overview')}</> },
+        { key: 'users' as const, label: <><UsersIcon className="w-4 h-4" />{t('admin.tabs.users')}</> },
+        { key: 'webhook' as const, label: <><LinkIcon className="w-4 h-4" />{t('admin.tabs.webhook')}</> },
+        { key: 'audit' as const, label: <><ClipboardDocumentListIcon className="w-4 h-4" />{t('admin.tabs.audit')}</> },
     ];
 
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100"><Settings className="w-6 h-6 inline-block mr-2" />{t('admin.title')}</h1>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><Cog6ToothIcon className="w-6 h-6" />{t('admin.title')}</h1>
                 <span className="text-sm text-gray-400">{t('admin.adminLabel', { name: user?.displayName || user?.username })}</span>
             </div>
 
@@ -86,7 +113,7 @@ export default function Admin() {
                     <button
                         key={t.key}
                         onClick={() => setTab(t.key)}
-                        className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === t.key
+                        className={`inline-flex items-center px-4 py-2.5 text-sm font-medium border-b-2 transition-colors gap-1 ${tab === t.key
                             ? 'border-primary-600 text-primary-700 dark:text-primary-300'
                             : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-200'
                             }`}
@@ -101,7 +128,7 @@ export default function Admin() {
                 <div className="space-y-6">
                     {/* System info */}
                     <div className="card">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3"><Monitor className="w-5 h-5 inline-block mr-1" />{t('admin.overview.system')}</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-1.5"><ComputerDesktopIcon className="w-5 h-5" />{t('admin.overview.system')}</h3>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                             <div>
                                 <span className="text-gray-400">Node.js</span>
@@ -124,7 +151,7 @@ export default function Admin() {
 
                     {/* Database counts */}
                     <div className="card">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3"><Database className="w-5 h-5 inline-block mr-1" />{t('admin.overview.dataOverview')}</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-1.5"><CircleStackIcon className="w-5 h-5" />{t('admin.overview.dataOverview')}</h3>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             {[
                                 { label: t('admin.overview.totalScripts'), value: sys.database.scripts, color: 'text-primary-600 dark:text-primary-400' },
@@ -143,7 +170,7 @@ export default function Admin() {
 
                     {/* Per-user scripts */}
                     <div className="card">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3"><Package className="w-5 h-5 inline-block mr-1" />{t('admin.overview.scriptDist')}</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-1.5"><CubeIcon className="w-5 h-5" />{t('admin.overview.scriptDist')}</h3>
                         <div className="space-y-2">
                             {sys.scriptsPerUser.map((u) => (
                                 <div key={u.username} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 dark:bg-gray-800">
@@ -156,7 +183,7 @@ export default function Admin() {
 
                     {/* Recent scripts */}
                     <div className="card">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3"><Sparkles className="w-5 h-5 inline-block mr-1" />{t('admin.overview.recentScripts')}</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-1.5"><SparklesIcon className="w-5 h-5" />{t('admin.overview.recentScripts')}</h3>
                         <div className="space-y-2">
                             {sys.recentScripts.map((s) => (
                                 <Link
@@ -169,8 +196,8 @@ export default function Admin() {
                                         <span className="text-xs font-mono text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30 px-2 py-0.5 rounded-full font-semibold">v{s.version}</span>
                                         {s.owner && <span className="text-xs text-gray-400">by {s.owner}</span>}
                                     </div>
-                                    <span className="text-xs text-gray-400">
-                                        <Download className="w-3 h-3 inline-block mr-0.5" />{s.installs} · {new Date(s.createdAt).toLocaleDateString('zh-CN')}
+                                    <span className="inline-flex items-center gap-0.5 text-xs text-gray-400">
+                                        <ArrowDownTrayIcon className="w-3 h-3" />{s.installs} · {new Date(s.createdAt).toLocaleDateString('zh-CN')}
                                     </span>
                                 </Link>
                             ))}
@@ -182,7 +209,7 @@ export default function Admin() {
             {/* Users tab */}
             {tab === 'users' && (
                 <div className="card">
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3"><Users className="w-5 h-5 inline-block mr-1" />{t('admin.users.title', { count: users.length })}</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-1.5"><UsersIcon className="w-5 h-5" />{t('admin.users.title', { count: users.length })}</h3>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
@@ -191,7 +218,6 @@ export default function Admin() {
                                     <th className="pb-2 pr-4 font-medium">{t('admin.users.displayName')}</th>
                                     <th className="pb-2 pr-4 font-medium">{t('admin.users.role')}</th>
                                     <th className="pb-2 pr-4 font-medium">{t('admin.users.scriptCount')}</th>
-                                    <th className="pb-2 pr-4 font-medium">{t('admin.users.envInfo')}</th>
                                     <th className="pb-2 font-medium">{t('admin.users.regTime')}</th>
                                 </tr>
                             </thead>
@@ -204,13 +230,10 @@ export default function Admin() {
                                             {u.role === 'admin' ? (
                                                 <span className="text-xs bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded font-medium">{t('admin.users.admin')}</span>
                                             ) : (
-                                                <span className="text-xs bg-gray-100 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">{t('admin.users.user')}</span>
+                                                <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">{t('admin.users.user')}</span>
                                             )}
                                         </td>
                                         <td className="py-2.5 pr-4">{u.scriptCount}</td>
-                                        <td className="py-2.5 pr-4">
-                                            {renderEnvInfo(u.envInfo)}
-                                        </td>
                                         <td className="py-2.5 text-gray-500 dark:text-gray-400">{new Date(u.createdAt).toLocaleDateString('zh-CN')}</td>
                                     </tr>
                                 ))}
@@ -223,18 +246,18 @@ export default function Admin() {
             {/* Webhook logs tab */}
             {tab === 'webhook' && (
                 <div className="card">
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3"><Link2 className="w-5 h-5 inline-block mr-1" />{t('admin.webhook.title')}</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-1.5"><LinkIcon className="w-5 h-5" />{t('admin.webhook.title')}</h3>
                     {logs.length === 0 ? (
                         <p className="text-sm text-gray-400 py-4 text-center">{t('admin.webhook.empty')}</p>
                     ) : (
                         <div className="space-y-2">
                             {logs.map((log) => (
                                 <div key={log.id} className="flex items-start gap-3 py-2 px-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 dark:bg-gray-800 text-sm">
-                                    <span className={`flex-shrink-0 px-2 py-0.5 rounded text-xs font-medium ${log.event === 'release' ? 'bg-green-100 text-green-700 dark:text-green-400' :
-                                        log.event === 'ping' ? 'bg-blue-100 text-blue-700' :
-                                            log.event === 'ignored' ? 'bg-gray-100 text-gray-500 dark:text-gray-400' :
-                                                log.action?.includes('fail') || log.action?.includes('error') ? 'bg-red-100 text-red-700 dark:text-red-400' :
-                                                    'bg-gray-100 text-gray-600 dark:text-gray-300'
+                                    <span className={`flex-shrink-0 px-2 py-0.5 rounded text-xs font-medium ${log.event === 'release' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400' :
+                                        log.event === 'ping' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' :
+                                            log.event === 'ignored' ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' :
+                                                log.action?.includes('fail') || log.action?.includes('error') ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400' :
+                                                    'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
                                         }`}>
                                         {log.event}
                                     </span>
@@ -256,7 +279,10 @@ export default function Admin() {
             {/* Audit logs tab */}
             {tab === 'audit' && (
                 <div className="card">
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3"><ClipboardList className="w-5 h-5 inline-block mr-1" />{t('admin.audit.title', { count: auditLogs.length })}</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-1.5">
+                        <ClipboardDocumentListIcon className="w-5 h-5" />
+                        {t('admin.audit.title', { count: auditTotal })}
+                    </h3>
                     {auditLogs.length === 0 ? (
                         <p className="text-sm text-gray-400 py-4 text-center">{t('admin.audit.empty')}</p>
                     ) : (
@@ -273,11 +299,11 @@ export default function Admin() {
                                 <tbody>
                                     {auditLogs.map((entry) => {
                                         const actionColor =
-                                            entry.action.startsWith('user.') ? 'bg-blue-100 text-blue-700' :
-                                                entry.action.startsWith('script.') ? 'bg-green-100 text-green-700 dark:text-green-400' :
+                                            entry.action.startsWith('user.') ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' :
+                                                entry.action.startsWith('script.') ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400' :
                                                     entry.action.startsWith('admin.') ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300' :
-                                                        entry.action.startsWith('webhook.') ? 'bg-purple-100 text-purple-700' :
-                                                            'bg-gray-100 text-gray-600 dark:text-gray-300';
+                                                        entry.action.startsWith('webhook.') ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' :
+                                                            'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300';
                                         return (
                                             <tr key={entry.id} className="border-b border-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800 dark:bg-gray-800">
                                                 <td className="py-2 pr-4 text-gray-500 dark:text-gray-400 whitespace-nowrap text-xs">
@@ -299,6 +325,22 @@ export default function Admin() {
                                     })}
                                 </tbody>
                             </table>
+
+                            {/* Infinite scroll sentinel */}
+                            <div ref={sentinelRef} className="flex items-center justify-center py-4">
+                                {auditLoadingMore ? (
+                                    <div className="flex items-center gap-2 text-sm text-gray-400">
+                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+                                        <span>{t('common.loading')}</span>
+                                    </div>
+                                ) : auditHasMore ? (
+                                    <span className="text-sm text-gray-400">{t('common.scrollToLoad')}</span>
+                                ) : (
+                                    <span className="text-sm text-gray-400">
+                                        {t('admin.audit.noMore', { total: auditLogs.length })}
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>

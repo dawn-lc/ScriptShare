@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
-import { FileText, Home, Upload, BarChart3, Settings as SettingsIcon, User, LogOut, LogIn, FileEdit } from 'lucide-react';
+import { DocumentTextIcon, HomeIcon, ArrowUpTrayIcon, ChartBarIcon, Cog6ToothIcon, UserIcon, ArrowRightEndOnRectangleIcon, ArrowRightStartOnRectangleIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
 
 export default function Layout() {
     const { t } = useTranslation();
@@ -28,7 +28,7 @@ export default function Layout() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
                         <Link to="/" className="flex items-center space-x-2">
-                            <FileText className="w-6 h-6 text-primary-600 dark:text-primary-400 dark:text-primary-400" />
+                            <DocumentTextIcon className="w-6 h-6 text-primary-600 dark:text-primary-400 dark:text-primary-400" />
                             <span className="text-xl font-bold text-gray-900 dark:text-gray-100 dark:text-gray-100">ScriptShare</span>
                         </Link>
 
@@ -36,43 +36,43 @@ export default function Layout() {
                         <nav className="hidden md:flex items-center space-x-1">
                             <Link
                                 to="/"
-                                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
+                                className={`inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
                                     }`}
                             >
-                                <Home className="w-4 h-4 mr-1.5 inline-block" />{t('nav.home')}
+                                <HomeIcon className="w-4 h-4 mr-1.5 inline-block" />{t('nav.home')}
                             </Link>
                             <Link
                                 to="/scripts"
-                                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/scripts') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
+                                className={`inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/scripts') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
                                     }`}
                             >
-                                <FileText className="w-4 h-4 mr-1.5 inline-block" />{t('nav.scripts')}
+                                <DocumentTextIcon className="w-4 h-4 mr-1.5 inline-block" />{t('nav.scripts')}
                             </Link>
                             {isAuthenticated && (
                                 <Link
                                     to="/upload"
-                                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/upload') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
+                                    className={`inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/upload') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
                                         }`}
                                 >
-                                    <Upload className="w-4 h-4 mr-1.5 inline-block" />{t('nav.upload')}
+                                    <ArrowUpTrayIcon className="w-4 h-4 mr-1.5 inline-block" />{t('nav.upload')}
                                 </Link>
                             )}
                             {user?.role === 'admin' && (
                                 <Link
                                     to="/stats"
-                                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/stats') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
+                                    className={`inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/stats') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
                                         }`}
                                 >
-                                    <BarChart3 className="w-4 h-4 mr-1.5 inline-block" />{t('nav.stats')}
+                                    <ChartBarIcon className="w-4 h-4 mr-1.5 inline-block" />{t('nav.stats')}
                                 </Link>
                             )}
                             {user?.role === 'admin' && (
                                 <Link
                                     to="/admin"
-                                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/admin') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
+                                    className={`inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/admin') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
                                         }`}
                                 >
-                                    <SettingsIcon className="w-4 h-4 mr-1.5 inline-block" />{t('nav.admin')}
+                                    <Cog6ToothIcon className="w-4 h-4 mr-1.5 inline-block" />{t('nav.admin')}
                                 </Link>
                             )}
                         </nav>
@@ -87,7 +87,7 @@ export default function Layout() {
                                                 {user?.displayName || user?.username}
                                             </Link>
                                             <Link to="/settings" className="text-sm text-gray-400 dark:text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 dark:text-primary-400 dark:hover:text-primary-400" title={t('nav.settings')}>
-                                                <SettingsIcon className="w-4 h-4" />
+                                                <Cog6ToothIcon className="w-4 h-4" />
                                             </Link>
                                             {user?.role === 'admin' && <span className="text-xs bg-amber-100 dark:bg-amber-900/50 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 dark:text-amber-300 px-1.5 py-0.5 rounded font-medium">{t('nav.adminLabel')}</span>}
                                             <button onClick={handleLogout} className="btn-secondary">
@@ -129,47 +129,47 @@ export default function Layout() {
                             <Link
                                 to="/"
                                 onClick={() => setMobileMenuOpen(false)}
-                                className={`block px-3 py-2 rounded-lg text-sm font-medium ${isActive('/') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
+                                className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium ${isActive('/') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
                                     }`}
                             >
-                                <Home className="w-4 h-4 inline-block mr-1" /> {t('nav.home')}
+                                <HomeIcon className="w-4 h-4 mr-1" /> {t('nav.home')}
                             </Link>
                             <Link
                                 to="/scripts"
                                 onClick={() => setMobileMenuOpen(false)}
-                                className={`block px-3 py-2 rounded-lg text-sm font-medium ${isActive('/scripts') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
+                                className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium ${isActive('/scripts') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
                                     }`}
                             >
-                                <FileText className="w-4 h-4 inline-block mr-1" /> {t('nav.scripts')}
+                                <DocumentTextIcon className="w-4 h-4 mr-1" /> {t('nav.scripts')}
                             </Link>
                             {isAuthenticated && (
                                 <Link
                                     to="/upload"
                                     onClick={() => setMobileMenuOpen(false)}
-                                    className={`block px-3 py-2 rounded-lg text-sm font-medium ${isActive('/upload') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
+                                    className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium ${isActive('/upload') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
                                         }`}
                                 >
-                                    <Upload className="w-4 h-4 inline-block mr-1" /> {t('nav.upload')}
+                                    <ArrowUpTrayIcon className="w-4 h-4 mr-1" /> {t('nav.upload')}
                                 </Link>
                             )}
                             {user?.role === 'admin' && (
                                 <Link
                                     to="/stats"
                                     onClick={() => setMobileMenuOpen(false)}
-                                    className={`block px-3 py-2 rounded-lg text-sm font-medium ${isActive('/stats') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
+                                    className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium ${isActive('/stats') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
                                         }`}
                                 >
-                                    <BarChart3 className="w-4 h-4 inline-block mr-1" /> {t('nav.stats')}
+                                    <ChartBarIcon className="w-4 h-4 mr-1" /> {t('nav.stats')}
                                 </Link>
                             )}
                             {user?.role === 'admin' && (
                                 <Link
                                     to="/admin"
                                     onClick={() => setMobileMenuOpen(false)}
-                                    className={`block px-3 py-2 rounded-lg text-sm font-medium ${isActive('/admin') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
+                                    className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium ${isActive('/admin') ? 'bg-primary-50 dark:bg-primary-900/30 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 dark:text-primary-300' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800'
                                         }`}
                                 >
-                                    <SettingsIcon className="w-4 h-4 inline-block mr-1" /> {t('nav.admin')}
+                                    <Cog6ToothIcon className="w-4 h-4 mr-1" /> {t('nav.admin')}
                                 </Link>
                             )}
                             <hr className="my-2 border-gray-200 dark:border-gray-700 dark:border-gray-700" />
@@ -178,26 +178,26 @@ export default function Layout() {
                                     <Link
                                         to="/my-stats"
                                         onClick={() => setMobileMenuOpen(false)}
-                                        className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800"
+                                        className="flex items-center px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800"
                                     >
-                                        <BarChart3 className="w-4 h-4 inline-block mr-1" /> {t('nav.myStats')}
+                                        <ChartBarIcon className="w-4 h-4 mr-1" /> {t('nav.myStats')}
                                     </Link>
                                     <Link
                                         to="/settings"
                                         onClick={() => setMobileMenuOpen(false)}
-                                        className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800"
+                                        className="flex items-center px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800"
                                     >
-                                        <SettingsIcon className="w-4 h-4 inline-block mr-1" /> {t('nav.settings')}
+                                        <Cog6ToothIcon className="w-4 h-4 mr-1" /> {t('nav.settings')}
                                     </Link>
-                                    <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
-                                        <User className="w-4 h-4 inline-block mr-1" /> {user?.displayName || user?.username}
+                                    <div className="flex items-center px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                                        <UserIcon className="w-4 h-4 mr-1" /> {user?.displayName || user?.username}
                                         {user?.role === 'admin' && <span className="ml-2 text-xs bg-amber-100 dark:bg-amber-900/50 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 dark:text-amber-300 px-1.5 py-0.5 rounded">{t('nav.adminLabel')}</span>}
                                     </div>
                                     <button
                                         onClick={() => { setMobileMenuOpen(false); handleLogout(); }}
-                                        className="block w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800"
+                                        className="flex items-center w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800"
                                     >
-                                        <LogOut className="w-4 h-4 inline-block mr-1" /> {t('nav.logoutTitle')}
+                                        <ArrowRightEndOnRectangleIcon className="w-4 h-4 mr-1" /> {t('nav.logoutTitle')}
                                     </button>
                                 </>
                             ) : (
@@ -205,16 +205,16 @@ export default function Layout() {
                                     <Link
                                         to="/login"
                                         onClick={() => setMobileMenuOpen(false)}
-                                        className="block px-3 py-2 rounded-lg text-sm font-medium text-primary-600 dark:text-primary-400 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800"
+                                        className="flex items-center px-3 py-2 rounded-lg text-sm font-medium text-primary-600 dark:text-primary-400 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800"
                                     >
-                                        <LogIn className="w-4 h-4 inline-block mr-1" /> {t('nav.login')}
+                                        <ArrowRightStartOnRectangleIcon className="w-4 h-4 mr-1" /> {t('nav.login')}
                                     </Link>
                                     <Link
                                         to="/register"
                                         onClick={() => setMobileMenuOpen(false)}
-                                        className="block px-3 py-2 rounded-lg text-sm font-medium text-primary-600 dark:text-primary-400 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800"
+                                        className="flex items-center px-3 py-2 rounded-lg text-sm font-medium text-primary-600 dark:text-primary-400 dark:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:bg-gray-800"
                                     >
-                                        <FileEdit className="w-4 h-4 inline-block mr-1" /> {t('nav.register')}
+                                        <PencilSquareIcon className="w-4 h-4 mr-1" /> {t('nav.register')}
                                     </Link>
                                 </>
                             )}
@@ -235,7 +235,7 @@ export default function Layout() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                         <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
-                            <FileText className="w-4 h-4 inline-block mr-1" /> ScriptShare
+                            <DocumentTextIcon className="w-4 h-4 mr-1" /> ScriptShare
                             <span className="text-gray-300 dark:text-gray-600">|</span>
                             <span>{t('app.footer')}</span>
                         </div>
