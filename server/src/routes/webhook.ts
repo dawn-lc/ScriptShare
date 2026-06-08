@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
-import { db } from '../db';
-import { webhookLogs, scripts } from '../db';
+import { webhookRepo, scriptRepo } from '../db/repos';
 import { eq } from 'drizzle-orm';
 import { audit } from '../utils/audit';
 
@@ -27,32 +26,23 @@ function verifySignature(payload: string, signature: string | undefined, secret:
  * 将 webhook 事件记录到数据库以供审计
  */
 function logEvent(scriptId: number | null, event: string, action: string, summary: string, detail: string): void {
-    try {
-        db.insert(webhookLogs).values({
-            scriptId,
-            event,
-            action,
-            summary,
-            detail,
-        }).run();
-    } catch {
+    webhookRepo.create({
+        scriptId,
+        event,
+        action,
+        summary,
+        detail,
+    }).catch(() => {
         // 表可能还不存在 — 忽略
-    }
+    });
 }
-
-// 确保 webhook_logs 表存在
-function ensureTable(): void {
-    // webhook_logs 表由 database.ts 的 initDatabase() 创建
-
-}
-ensureTable();
 
 // ── 每个脚本的 webhook 端点 ──
 // 仅处理 release 事件。脚本文件从 release 的附件中获取，
 // 而非 raw.githubusercontent.com。
 // Pre-release → canary 频道，正式 Release → stable 频道。
 
-router.post('/scripts/:id', (req: Request, res: Response) => {
+router.post('/scripts/:id', async (req: Request, res: Response) => {
     const scriptId = parseInt(String(req.params.id));
     // Express 请求头类型定义为 string | string[] | undefined，实际运行时为 string
     const signature = req.headers['x-hub-signature-256'] as string | undefined;
@@ -65,12 +55,11 @@ router.post('/scripts/:id', (req: Request, res: Response) => {
         return;
     }
 
-    // db 为 Proxy 动态类型，select 返回类型无法静态推导
-    const script = db.select({
-        id: scripts.id, name: scripts.name, webhookSecret: scripts.webhookSecret,
-        githubRepo: scripts.githubRepo, githubPath: scripts.githubPath, version: scripts.version,
-        canaryVersion: scripts.canaryVersion, userId: scripts.userId,
-    }).from(scripts).where(eq(scripts.id, scriptId)).get() as ScriptWebhookRow | undefined;
+    const script = await scriptRepo.findByIdColumns(scriptId, {
+        id: true, name: true, webhookSecret: true,
+        githubRepo: true, githubPath: true, version: true,
+        canaryVersion: true, userId: true,
+    }) as ScriptWebhookRow | undefined;
 
     if (!script) {
         logEvent(null, 'webhook', 'not_found', `脚本 #${scriptId} 不存在`, '');
@@ -290,15 +279,15 @@ async function handleReleaseEvent(script: ScriptWebhookRow & { id: number }, pay
         // 更新对应的频道
         const channel = isPreRelease ? 'canary' : 'stable';
         if (channel === 'canary') {
-            db.update(scripts).set({
+            await scriptRepo.update(script.id!, {
                 canaryCode: code,
                 canaryVersion: newVersion,
-            }).where(eq(scripts.id, script.id)).run();
+            });
         } else {
-            db.update(scripts).set({
+            await scriptRepo.update(script.id!, {
                 code,
                 version: newVersion,
-            }).where(eq(scripts.id, script.id)).run();
+            });
         }
 
         logEvent(script.id, 'release', 'updated',

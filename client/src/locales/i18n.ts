@@ -30,8 +30,8 @@ function getSavedLang(): string {
 }
 
 export const LANGUAGES = [
-    { code: 'zh-CN', label: '简体中文' },
-    { code: 'en-US', label: 'English' },
+    { code: 'zh-CN', labelKey: 'language.label' },
+    { code: 'en-US', labelKey: 'language.label' },
 ];
 
 export const DEFAULT_LANG = 'zh-CN';

@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
-import { solveCapChallenge } from '../utils/cap-solver';
-import { PencilSquareIcon, CheckCircleIcon, ClockIcon, ArrowPathIcon, ArrowRightStartOnRectangleIcon, ChevronLeftIcon } from '@heroicons/react/24/outline';
+import { captchaService } from '../utils/captcha-solver';
+import { PencilSquareIcon, CheckCircleIcon, ClockIcon, ArrowPathIcon, ArrowRightStartOnRectangleIcon } from '@heroicons/react/24/outline';
 
 export default function Register() {
     const { t } = useTranslation();
@@ -26,52 +26,75 @@ export default function Register() {
     const elapsedTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
-        solveCaptcha();
-        return () => {
-            if (elapsedTimerRef.current !== null) {
-                clearInterval(elapsedTimerRef.current);
-            }
-        };
-    }, []);
+        // 订阅进度更新（与求解逻辑完全解耦）
+        const unsub = captchaService.subscribe((pct) => {
+            setCapProgress(pct);
+        });
 
-    async function solveCaptcha() {
+        // 启动挑战（服务单例确保前一个被取消）
         setCapSolving(true);
         setCapDone(false);
         setCapToken('');
         setCapProgress(0);
         setCapElapsed(0);
+        startTimeRef.current = Date.now();
+        elapsedTimerRef.current = window.setInterval(() => {
+            setCapElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+        }, 1000);
 
-        try {
-            // 启动计时器
-            startTimeRef.current = Date.now();
-            elapsedTimerRef.current = window.setInterval(() => {
-                setCapElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-            }, 1000);
-
-            // 使用直接求解器处理 Cap 挑战
-            const token = await solveCapChallenge((pct) => {
-                setCapProgress(pct);
+        captchaService.start() // 幂等：多次调用只创建一个挑战
+            .then((token) => {
+                setCapToken(token);
+                setCapProgress(100);
+                setCapDone(true);
+                setCapSolving(false);
+                clearInterval(elapsedTimerRef.current!);
+                elapsedTimerRef.current = null;
+            })
+            .catch((err: unknown) => {
+                if ((err as Error)?.message === 'cancelled') return;
+                console.error('[cap] Solving failed:', err);
+                const msg = err instanceof Error ? err.message : String(err);
+                setServerMsg({ type: 'error', text: t('register.cap.failed', { msg: msg || t('common.error') }) });
+                setCapSolving(false);
+                clearInterval(elapsedTimerRef.current!);
+                elapsedTimerRef.current = null;
             });
 
-            setCapToken(token);
-            setCapProgress(100);
-            setCapDone(true);
-            setCapSolving(false);
+        return () => {
+            unsub();
+            clearInterval(elapsedTimerRef.current!);
+            elapsedTimerRef.current = null;
+        };
+    }, []);
 
-            if (elapsedTimerRef.current !== null) {
-                clearInterval(elapsedTimerRef.current);
+    async function retryCaptcha() {
+        setServerMsg(null);
+        setCapSolving(true);
+        setCapDone(false);
+        setCapToken('');
+        setCapProgress(0);
+        setCapElapsed(0);
+        startTimeRef.current = Date.now();
+
+        captchaService.restart() // 强制重启，取消当前挑战
+            .then((token) => {
+                setCapToken(token);
+                setCapProgress(100);
+                setCapDone(true);
+                setCapSolving(false);
+                clearInterval(elapsedTimerRef.current!);
                 elapsedTimerRef.current = null;
-            }
-        } catch (err: unknown) {
-            console.error('[cap] Solving failed:', err);
-            const msg = err instanceof Error ? err.message : String(err);
-            setServerMsg({ type: 'error', text: t('register.cap.failed', { msg: msg || t('common.error') }) });
-            setCapSolving(false);
-            if (elapsedTimerRef.current !== null) {
-                clearInterval(elapsedTimerRef.current);
+            })
+            .catch((err: unknown) => {
+                if ((err as Error)?.message === 'cancelled') return;
+                console.error('[cap] Solving failed:', err);
+                const msg = err instanceof Error ? err.message : String(err);
+                setServerMsg({ type: 'error', text: t('register.cap.failed', { msg: msg || t('common.error') }) });
+                setCapSolving(false);
+                clearInterval(elapsedTimerRef.current!);
                 elapsedTimerRef.current = null;
-            }
-        }
+            });
     }
 
     if (isAuthenticated) {
@@ -94,7 +117,7 @@ export default function Register() {
             navigate('/', { replace: true });
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
-            if (msg === '验证码错误' || msg === '请完成验证码') solveCaptcha();
+            if (msg === '验证码错误' || msg === '请完成验证码') retryCaptcha();
             setServerMsg({ type: 'error', text: t('register.error.failed', { msg }) });
         } finally {
             setLoading(false);
@@ -154,15 +177,24 @@ export default function Register() {
                     </div>
 
                     {/* Cap CAPTCHA */}
-                    <div className={`rounded-lg p-4 border ${capDone ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800' : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'}`}>
-                        <div className="flex items-center justify-between mb-2">
-                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                                {capDone ? <span className="inline-flex items-center gap-1"><CheckCircleIcon className="w-4 h-4" />{t('register.cap.verified')}</span> : <span className="inline-flex items-center gap-1"><ClockIcon className="w-4 h-4" />{t('register.cap.calculating')}</span>}
-                            </label>
-                            {!capSolving && !capDone && (
-                                <button type="button" className="inline-flex items-center gap-1 text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 dark:text-primary-300" onClick={solveCaptcha}>
-                                    <ArrowPathIcon className="w-3 h-3" />{t('register.cap.retry')}
-                                </button>
+                    <div className={`rounded-lg border ${capDone ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800 flex items-center justify-center min-h-[72px]' : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 p-4'}`}>
+                        <div className={`flex items-center ${capDone ? 'justify-center gap-2' : 'justify-between w-full'}`}>
+                            {capDone ? (
+                                <>
+                                    <CheckCircleIcon className="w-6 h-6 shrink-0" />
+                                    <span className="text-lg font-medium leading-none text-gray-700 dark:text-gray-200">{t('register.cap.verified')}</span>
+                                </>
+                            ) : (
+                                <>
+                                    <label className="font-medium text-gray-700 dark:text-gray-200 text-sm">
+                                        <span className="inline-flex items-center gap-1"><ClockIcon className="w-4 h-4" />{t('register.cap.calculating')}</span>
+                                    </label>
+                                    {!capSolving && (
+                                        <button type="button" className="inline-flex items-center gap-1 text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 dark:text-primary-300" onClick={retryCaptcha}>
+                                            <ArrowPathIcon className="w-3 h-3" />{t('register.cap.retry')}
+                                        </button>
+                                    )}
+                                </>
                             )}
                         </div>
                         {capSolving && (
@@ -179,9 +211,6 @@ export default function Register() {
                                         : t('register.cap.progressSimple', { percent: capProgress })}
                                 </p>
                             </div>
-                        )}
-                        {capDone && (
-                            <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1"><CheckCircleIcon className="w-3 h-3" />{t('register.cap.passed')}</p>
                         )}
                         {!capSolving && !capDone && (
                             <p className="text-xs text-gray-400">{t('register.cap.retryHint')}</p>
@@ -212,11 +241,10 @@ export default function Register() {
                     </button>
                 </form>
 
-                <div className="mt-4 text-center space-y-2">
+                <div className="mt-4 text-center">
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                         {t('register.hasAccount')}<Link to="/login" className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 dark:text-primary-300 font-medium">{t('register.login')}</Link>
                     </p>
-                    <Link to="/" className="text-sm text-gray-400 hover:text-gray-600 dark:text-gray-300 flex items-center gap-1"><ChevronLeftIcon className="w-4 h-4" /> {t('register.backHome')}</Link>
                 </div>
             </div>
         </div>

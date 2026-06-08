@@ -106,13 +106,10 @@ export default function Login() {
                     </button>
                 </form>
 
-                <div className="mt-4 text-center space-y-2">
+                <div className="mt-4 text-center">
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                         {t('login.noAccount')}<Link to="/register" className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 dark:text-primary-300 font-medium">{t('login.register')}</Link>
                     </p>
-                    <Link to="/" className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 dark:text-primary-300 block">
-                        <span className="inline-flex items-center gap-1"><ChevronLeftIcon className="w-4 h-4" /> {t('login.backHome')}</span>
-                    </Link>
                 </div>
             </div>
         </div>

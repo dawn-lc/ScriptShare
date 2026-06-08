@@ -1,4 +1,6 @@
 {
+    "language.label": "English",
+
     "app.name": "ScriptShare",
     "app.footer": "UserScript Distribution Platform",
     "app.devBy": "Developed by DeepSeek V4 Flash",
@@ -58,8 +60,10 @@
     "scriptDetail.settings": "Settings",
     "scriptDetail.delete": "Delete",
     "scriptDetail.deleting": "Deleting...",
-    "scriptDetail.deleteConfirm": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
+    "scriptDetail.deleteConfirm": "Are you sure you want to delete \"{{name}}\"?",
     "scriptDetail.deleteFail": "Delete failed: {{msg}}",
+    "scriptDetail.hardDelete": "Permanently Delete",
+    "scriptDetail.hardDeleteConfirm": "Are you sure you want to permanently delete \"{{name}}\"? This cannot be undone!",
     "scriptDetail.share": "Share",
     "scriptDetail.shareCopied": "Link copied to clipboard",
     "scriptDetail.installs": "{{count}} installs",
@@ -171,9 +175,6 @@
 
     "register.title": "Register",
     "register.desc": "Create a new account",
-    "register.firstUserWarning.title": "First Registration Security Warning",
-    "register.firstUserWarning.desc1": "This is the first account and will receive admin privileges.",
-    "register.firstUserWarning.desc2": "Please set a strong password and complete registration soon.",
     "register.username": "Username *",
     "register.usernamePlaceholder": "Letters, numbers, or Chinese",
     "register.displayName": "Display Name (optional)",
@@ -184,12 +185,12 @@
     "register.confirmPlaceholder": "Enter password again",
     "register.cap.verified": "Verified",
 
+    "register.cap.failed": "Verification failed: {{msg}}",
     "register.cap.calculating": "Calculating verification...",
     "register.cap.retry": "Retry",
 
-    "register.cap.progress": "Proof of work in progress ({{seconds}}s elapsed)... {{percent}}%",
+    "register.cap.progress": "Proof of work in progress... {{percent}}% ({{seconds}}s elapsed)",
     "register.cap.progressSimple": "Proof of work in progress... {{percent}}%",
-    "register.cap.passed": "Verification passed, you can submit registration",
     "register.cap.retryHint": "Click \"Retry\" to reload verification",
     "register.error.username": "Please enter a username",
     "register.error.passwordLength": "Password must be at least 6 characters",
@@ -291,6 +292,7 @@
     "admin.audit.detail": "Detail",
     "admin.audit.noMore": "Loaded all {{total}} audit log entries",
 
+    "common.close": "Close",
     "common.loading": "Loading...",
     "common.error": "Error",
     "common.save": "Save",

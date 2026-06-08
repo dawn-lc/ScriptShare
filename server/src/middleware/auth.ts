@@ -6,6 +6,7 @@ import { db } from '../db';
 import { users } from '../db';
 import { eq } from 'drizzle-orm';
 
+
 // 扩展 Express Request 以携带认证信息
 declare global {
     namespace Express {
@@ -33,7 +34,7 @@ export interface AuthPayload {
     exp: number;
 }
 
-interface UserRow {
+export interface UserRow {
     id: number;
     username: string;
     role: string;
@@ -135,17 +136,16 @@ export function verifyPassword(password: string, stored: string): boolean {
  * 检查 token 的 tokenNonce 是否与数据库中用户的当前 tokenNonce 匹配。
  * 若不匹配，则 token 已失效（如登出后）。
  */
-function checkTokenNonce(payload: AuthPayload): boolean {
+async function checkTokenNonce(payload: AuthPayload): Promise<boolean> {
     if (!payload.userId) return false;
-    // db 为 Proxy 动态类型，select 返回类型无法静态推导，需显式标注返回结构
-    const user = db.select({ tokenNonce: users.tokenNonce })
-        .from(users).where(eq(users.id, payload.userId)).get() as { tokenNonce: string } | undefined;
+    const [user] = await db.select({ tokenNonce: users.tokenNonce })
+        .from(users).where(eq(users.id, payload.userId));
     if (!user) return false;
     return user.tokenNonce === payload.tokenNonce;
 }
 
 // 中间件：要求登录
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
     const token = req.cookies?.session_token;
 
     if (!token) {
@@ -161,7 +161,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     }
 
     // 检查 token 是否已失效（如登出）
-    if (!checkTokenNonce(payload)) {
+    const valid = await checkTokenNonce(payload);
+    if (!valid) {
         res.clearCookie('session_token', { path: '/' });
         res.status(401).json({ error: '登录已失效，请重新登录', code: 'AUTH_INVALIDATED' });
         return;
@@ -177,7 +178,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
 // 中间件：要求管理员角色
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
-    requireAuth(req, res, () => {
+    requireAuth(req, res, async () => {
         const user = req.user!;
         if (user.role !== 'admin') {
             res.status(403).json({ error: '需要管理员权限', code: 'FORBIDDEN' });
@@ -188,14 +189,17 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
 }
 
 // 中间件：可选认证（已登录时附加用户信息）
-export function optionalAuth(req: Request, res: Response, next: NextFunction): void {
+export async function optionalAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
     const token = req.cookies?.session_token;
     if (token) {
         const payload = verifyToken(token);
-        if (payload && payload.userId && checkTokenNonce(payload)) {
-            // token 即将过期时续期（滚动会话）
-            renewTokenIfNeeded(payload, res);
-            req.user = payload;
+        if (payload && payload.userId) {
+            const valid = await checkTokenNonce(payload);
+            if (valid) {
+                // token 即将过期时续期（滚动会话）
+                renewTokenIfNeeded(payload, res);
+                req.user = payload;
+            }
         }
     }
     next();
@@ -204,4 +208,75 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction): v
 // 辅助函数：从请求中获取当前用户（在 requireAuth/optionalAuth 之后使用）
 export function getCurrentUser(req: Request): AuthPayload | null {
     return req.user || null;
+}
+
+/** 访客 token 固定 userId（表示非注册用户） */
+export const GUEST_USER_ID = 0;
+
+/** 生成访客 session token（服务器签名，表示已知访客） */
+export function createGuestToken(): string {
+    const now = Date.now();
+    const payload: AuthPayload = {
+        userId: GUEST_USER_ID,
+        username: 'guest',
+        role: 'guest',
+        tokenNonce: '',
+        iat: now,
+        exp: now + TOKEN_DURATION_MS,
+    };
+    const data = JSON.stringify(payload);
+    const base64 = Buffer.from(data).toString('base64');
+    const sig = crypto.createHmac('sha256', getSecret()).update(base64).digest('hex').substring(0, 16);
+    return `${base64}.${sig}`;
+}
+
+/**
+ * 从请求 cookie 中提取用户等级，不要求认证。
+ * 用于限流器等需要在认证中间件之前执行的场景。
+ * 返回值: 'no-cookie' | 'guest' | 'user' | 'admin'
+ */
+export type RateLimitRole = 'no-cookie' | 'guest' | 'user' | 'admin';
+export function getRequestRole(req: Request): RateLimitRole {
+    const token = req.cookies?.session_token;
+    if (!token) return 'no-cookie';
+    const payload = verifyToken(token);
+    if (!payload) return 'no-cookie';
+    // userId 为 null/undefined 时视为无有效身份；0 表示访客
+    if (payload.userId === null || payload.userId === undefined) return 'no-cookie';
+    if (payload.role === 'guest') return 'guest';
+    if (payload.role === 'admin') return 'admin';
+    return 'user';
+}
+
+/**
+ * 中间件：自动为无有效 session_token 的请求签发访客 token。
+ * 应在限流器之前运行，确保 getRequestRole 能区分无 cookie 和已知访客。
+ */
+export function ensureGuestToken(req: Request, res: Response, next: NextFunction): void {
+    const token = req.cookies?.session_token;
+    if (!token) {
+        // 签发访客 token
+        const guestToken = createGuestToken();
+        res.cookie('session_token', guestToken, {
+            httpOnly: true,
+            sameSite: 'lax',
+            secure: isProd,
+            maxAge: TOKEN_DURATION_MS,
+            path: '/',
+        });
+    } else {
+        // 即使有 token 但已过期/无效（不含有效的访客或用户 token），也重新签发
+        const payload = verifyToken(token);
+        if (!payload || payload.userId === null || payload.userId === undefined) {
+            const guestToken = createGuestToken();
+            res.cookie('session_token', guestToken, {
+                httpOnly: true,
+                sameSite: 'lax',
+                secure: isProd,
+                maxAge: TOKEN_DURATION_MS,
+                path: '/',
+            });
+        }
+    }
+    next();
 }

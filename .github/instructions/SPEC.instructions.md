@@ -14,9 +14,11 @@ applyTo: '**/*.{ts,tsx,json}'
 
 ## 1. 项目架构
 
-- **Monorepo**：`client/`（React + Vite + Tailwind）+ `server/`（Express + tsx）
-- 通过 `npm run dev` 同时启动前后端，生产构建用 `npm run build`
-- 数据库通过 `DB_DIALECT` 环境变量切换 SQLite/PG，查询统一用 Drizzle ORM
+- **所有终端命令在项目根目录 `D:\code\ScriptShare` 执行**，使用根 `package.json` 的脚本：
+    - `npm run dev` — 同时启动前后端（`concurrently`）
+    - `npm run build` — 构建前后端
+    - `npm run dev:server` — 仅启动后端
+    - `npm run dev:client` — 仅启动前端
 
 ## 2. TypeScript 规范
 
@@ -30,14 +32,22 @@ applyTo: '**/*.{ts,tsx,json}'
 - 所有密码使用 PBKDF2 哈希，会话用 HMAC 签名 + httpOnly Cookie
 - 关键资源操作（创建/修改/删除）需 `requireAuth` + 所有权校验
 - 全局限流 + 敏感端点独立限流，Helmet 安全头部，CORS 生产环境限制来源
-- PoW 验证码：创建挑战 → 客户端求解 → 兑换 token → 原子消费（单条 SQL）
+- PoW 验证码：`POST /api/captcha/challenge` → 客户端求解 → `POST /api/captcha/redeem` → 原子消费（单条 SQL）
+    - 挑战参数 `{ c, s, d }`：`c`=子挑战数、`s`=salt 十六进制长度（固定 32）、`d`=目标前缀十六进制字符数（难度）
+    - 参数随 challenge 返回，客户端回传时附 HMAC 签名（`CAPTCHA_SIGN_SECRET`），服务端验签后直接验证，无需查 `captcha_challenges` 表
+    - 原理：`challenge` 返回时将 `{ token, c, s, d, expires }` 用 HMAC 签名得到 `sig`，发给客户端；兑换时客户端原样送回 `{ token, c, s, d, sig }`，服务端用同一密钥重算签名比对。因攻击者不知道密钥，无法篡改参数，故参数可信，无需查数据库验证
+    - 子挑战 salt/target 用 **HMAC-SHA256** 确定性派生：`salt_i = HMAC(token, i)`、`target_i = HMAC(token, i+"d")`，替代手写 PRNG
+    - 区块链式链式依赖：`prevNonce = solutions[i-1]`，强制串行计算，抵抗并行化
+    - 内存硬哈希用 Argon2id（`hash-wasm`），16MB / 3 轮 / 单路并行，两端参数硬编码一致
+    - token 原子消费：`DELETE FROM captcha_tokens WHERE key = ? AND expires > now`，`changes`=0 视为无效
+    - 配置：`CAPTCHA_SIGN_SECRET`、`CAPTCHA_SIGN_EXPIRES_MS`、`CAPTCHA_TOKEN_EXPIRES_MS`
 - Webhook 使用 HMAC 签名验证，`rawBody` 捕获必须在 JSON 解析之前
 - 管理员凭据通过环境变量注入，启动时自动初始化
 
 ## 4. 数据库（Drizzle ORM）
 
-- **各方言最优类型原则**：所有字段在各方言中使用各自最高效的存储格式，通过 Drizzle ORM 在运行时透明映射，应用层无感。双方言适配：`sqliteTable` / `pgTable` 并存，通过 Proxy 模式按方言切换
-    - 整数/布尔 → SQLite `integer` / PG `integer` / `boolean`
+- **各方言最优类型原则**：所有字段在各方言中使用各自最高效的存储格式，通过 Drizzle ORM 在运行时透明映射，应用层无感。
+    - 整数/布尔 → SQLite `integer` / PG `integer`/ `bigint` / `boolean`
     - 浮点数 → SQLite `real` / PG `double precision`
     - 文本 → SQLite `text` / PG `text` / `varchar`
     - 时间 → SQLite `integer`（Unix 毫秒时间戳）/ PG `timestamp with time zone`
@@ -58,6 +68,7 @@ applyTo: '**/*.{ts,tsx,json}'
 - 图标用 `@heroicons/react`（outline 系列），按需 import
 - 全局状态用 `AuthContext`（`useAuth()`），页面局部用 `useState`/`useReducer`
 - 国际化用 `useTranslation()` + `locales/*.json`，键格式 `module.section.key`
+- 数字紧凑格式化使用 `Intl.NumberFormat({ notation: 'compact' })`，不手写多语言分支
 - 深色模式用 Tailwind `dark:` 变体 + `transition-colors duration-200`
 - 路由保护用 `RequireAuth` / `RequireAdmin` 包裹组件
 - 模态对话框用 `await confirm(msg)` / `await alert(msg)` / `await prompt(msg)`，由全局 `DialogProvider` 自实现，`DialogProvider` 在 `main.tsx` 顶层注入

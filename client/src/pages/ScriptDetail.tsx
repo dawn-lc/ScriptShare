@@ -9,6 +9,7 @@ import {
     getUpdateUrl,
     getScriptCode,
     deleteScript,
+    hardDeleteScript,
     getScriptRatings,
     rateScript,
     Script,
@@ -63,6 +64,21 @@ export default function ScriptDetail() {
         setDeleting(true);
         try {
             await deleteScript(script.id);
+            alert(t('scriptDetail.deleteSuccess', { defaultValue: '脚本已删除' }), 'success');
+            navigate('/scripts', { replace: true });
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            alert(t('scriptDetail.deleteFail', { msg: msg || t('common.error') }));
+            setDeleting(false);
+        }
+    }
+
+    async function handleHardDelete() {
+        if (!script || !(await confirm({ message: t('scriptDetail.hardDeleteConfirm', { name: script.name }), type: 'danger', confirmText: t('scriptDetail.hardDelete') }))) return;
+        setDeleting(true);
+        try {
+            await hardDeleteScript(script.id);
+            alert(t('scriptDetail.hardDeleteSuccess', { defaultValue: '脚本已永久删除' }), 'info');
             navigate('/scripts', { replace: true });
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -73,7 +89,7 @@ export default function ScriptDetail() {
 
     function copyToClipboard(text: string, label: string) {
         navigator.clipboard.writeText(text).then(() => {
-            alert(t('scriptDetail.copySuccess', { label }));
+            alert(t('scriptDetail.copySuccess', { label }), 'success');
         });
     }
 
@@ -127,9 +143,9 @@ export default function ScriptDetail() {
         );
     }
 
-    const matchPatterns = script.match ? script.match.split('\n').filter(Boolean) : [];
-    const grantList = script.grant ? script.grant.split('\n').filter(Boolean) : [];
-    const requireList = script.require ? script.require.split('\n').filter(Boolean) : [];
+    const matchPatterns = script.match ?? [];
+    const grantList = script.grant ?? [];
+    const requireList = script.require ?? [];
 
     const installUrl = getInstallUrl(script.id, channel);
     const updateUrl = getUpdateUrl(script.id, channel);
@@ -147,6 +163,8 @@ export default function ScriptDetail() {
 // @updateURL    ${window.location.origin}${updateUrl}
 // @downloadURL  ${window.location.origin}${installUrl}
 // ==/UserScript==`;
+
+    const isDeleted = !!script.deletedAt;
 
     return (
         <>
@@ -194,14 +212,27 @@ export default function ScriptDetail() {
                                                 <Cog6ToothIcon className="w-4 h-4 mr-1" />{t('scriptDetail.settings')}
                                             </Link>
                                             <div className="w-px h-6 bg-gray-200 dark:bg-gray-700" />
-                                            <button className="btn-danger text-xs sm:text-sm" onClick={handleDelete} disabled={deleting}>
-                                                {deleting ? t('scriptDetail.deleting') : <><TrashIcon className="w-4 h-4 mr-1" />{t('scriptDetail.delete')}</>}
-                                            </button>
+                                            {!isDeleted && (
+                                                <button className="btn-danger text-xs sm:text-sm" onClick={handleDelete} disabled={deleting}>
+                                                    {deleting ? t('scriptDetail.deleting') : <><TrashIcon className="w-4 h-4 mr-1" />{t('scriptDetail.delete')}</>}
+                                                </button>
+                                            )}
+                                            {user?.role === 'admin' && (
+                                                <button className="btn-danger text-xs sm:text-sm" onClick={handleHardDelete} disabled={deleting}>
+                                                    {deleting ? t('scriptDetail.deleting') : <><TrashIcon className="w-4 h-4 mr-1" />{t('scriptDetail.hardDelete')}</>}
+                                                </button>
+                                            )}
                                         </>
                                     )}
                                 </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-3 text-sm text-gray-500 dark:text-gray-400">
+                                {isDeleted && (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-full text-xs text-red-700 dark:text-red-400 font-medium">
+                                        <TrashIcon className="w-3 h-3" />
+                                        {t('scriptDetail.deletedBadge', { defaultValue: '脚本已被删除' })}
+                                    </span>
+                                )}
                                 <span className="font-mono bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 px-2.5 py-0.5 rounded-full text-xs font-semibold">
                                     v{script.version}
                                 </span>

@@ -117,6 +117,24 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     const hasCancel = cancelText !== '';
     const promptOpts = isPrompt ? (opts as PromptOptions) : null;
 
+    // 根据类型选择图标
+    const TypeIcon = type === 'danger' ? (
+        <svg className="w-12 h-12 text-red-500" fill="none" viewBox="0 0 24 24" strokeWidth="{1.5}" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+        </svg>
+    ) : type === 'success' ? (
+        <svg className="w-12 h-12 text-green-500" fill="none" viewBox="0 0 24 24" strokeWidth="{1.5}" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+    ) : (
+        <svg className="w-12 h-12 text-blue-500" fill="none" viewBox="0 0 24 24" strokeWidth="{1.5}" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
+        </svg>
+    );
+
+    // 是否为纯提示（无操作按钮）
+    const isAlert = !hasCancel && confirmText === '';
+
     return (
         <>
             {children}
@@ -125,25 +143,40 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                 <div
                     role="dialog"
                     aria-modal="true"
-                    aria-labelledby="dialog-title"
-                    className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4 border border-gray-200 dark:border-gray-700 animate-in zoom-in-95 duration-200"
+                    aria-labelledby={title ? 'dialog-title' : undefined}
+                    className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-8 w-full max-w-md mx-4 border border-gray-200 dark:border-gray-700 animate-in zoom-in-95 duration-200"
                 >
-                    <div className="flex items-start justify-between mb-3">
-                        {title ? (
-                            <h3 id="dialog-title" className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
-                        ) : (
-                            <span />
-                        )}
+                    {/* 关闭按钮 — 绝对定位在右上角，不占文档流 */}
+                    {!isAlert && (
                         <button
-                            className="p-1 -mr-1 -mt-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                            className="absolute top-5 right-5 p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                             onClick={() => done(false)}
                             aria-label={t('common.cancel')}
                         >
-                            <XMarkIcon className="w-5 h-5" />
+                            <XMarkIcon className="w-6 h-6" />
                         </button>
-                    </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">{message}</p>
+                    )}
 
+                    {/* 图标 */}
+                    {TypeIcon && (
+                        <div className="flex justify-center mb-4">
+                            {TypeIcon}
+                        </div>
+                    )}
+
+                    {/* 标题 */}
+                    {title && (
+                        <h3 id="dialog-title" className="text-lg font-semibold text-gray-900 dark:text-gray-100 text-center mb-3">
+                            {title}
+                        </h3>
+                    )}
+
+                    {/* 消息内容 */}
+                    {message && (
+                        <p className="text-base text-gray-600 dark:text-gray-300 leading-relaxed text-center">{message}</p>
+                    )}
+
+                    {/* Prompt 输入框 */}
                     {isPrompt && (
                         <input
                             ref={inputRef}
@@ -153,31 +186,40 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                             value={promptValue}
                             onChange={(e) => setPromptValue(e.target.value)}
                             onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    done(promptValue);
-                                }
+                                if (e.key === 'Enter') { e.preventDefault(); done(promptValue); }
                             }}
                         />
                     )}
 
-                    <div className="flex justify-end gap-3 mt-6">
-                        {hasCancel && (
-                            <button className="btn-secondary" onClick={() => done(false)}>
-                                {cancelText}
-                            </button>
-                        )}
-                        {confirmText && (
+                    {/* 底部按钮 */}
+                    <div className={`flex ${isAlert ? 'justify-center' : 'justify-end'} gap-4 mt-8`}>
+                        {isAlert ? (
                             <button
-                                className={'px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors ' + (
-                                    type === 'danger' ? 'bg-red-600 hover:bg-red-700' :
-                                        type === 'success' ? 'bg-green-600 hover:bg-green-700' :
-                                            'bg-primary-600 hover:bg-primary-700'
-                                )}
-                                onClick={() => done(isPrompt ? promptValue : true)}
+                                className="px-6 py-2.5 text-base font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                                onClick={() => done(false)}
                             >
-                                {confirmText}
+                                {t('common.close')}
                             </button>
+                        ) : (
+                            <>
+                                {hasCancel && (
+                                    <button className="btn-secondary text-base" onClick={() => done(false)}>
+                                        {cancelText}
+                                    </button>
+                                )}
+                                {confirmText && (
+                                    <button
+                                        className={'px-6 py-2.5 rounded-lg text-base font-medium text-white transition-colors ' + (
+                                            type === 'danger' ? 'bg-red-600 hover:bg-red-700' :
+                                                type === 'success' ? 'bg-green-600 hover:bg-green-700' :
+                                                    'bg-primary-600 hover:bg-primary-700'
+                                        )}
+                                        onClick={() => done(isPrompt ? promptValue : true)}
+                                    >
+                                        {confirmText}
+                                    </button>
+                                )}
+                            </>
                         )}
                     </div>
                 </div>

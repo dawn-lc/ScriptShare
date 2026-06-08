@@ -206,7 +206,7 @@ export default function Settings() {
                     >
                         {LANGUAGES.map((lang) => (
                             <option key={lang.code} value={lang.code}>
-                                {lang.label}
+                                {t(lang.labelKey)}
                             </option>
                         ))}
                     </select>

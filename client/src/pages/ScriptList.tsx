@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { getScripts, ScriptListItem, Pagination } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { getLocalizedText, formatCount } from '../utils/localize';
-import { DocumentTextIcon, ArrowUpTrayIcon, InboxIcon, UserIcon, ArrowDownTrayIcon, ArrowPathIcon, ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon, StarIcon } from '@heroicons/react/24/outline';
+import { DocumentTextIcon, ArrowUpTrayIcon, InboxIcon, UserIcon, ArrowDownTrayIcon, ArrowPathIcon, ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon, StarIcon, TrashIcon } from '@heroicons/react/24/outline';
 import ScriptIcon from '../components/ScriptIcon';
 import StarRating from '../components/StarRating';
 
@@ -168,6 +168,12 @@ export default function ScriptList() {
                                 </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-1.5 mt-4 pt-3 border-t border-gray-100 dark:border-gray-700/50 text-xs text-gray-400">
+                                {script.deletedAt && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-600 dark:text-red-400 font-medium">
+                                        <TrashIcon className="w-3 h-3" />
+                                        {t('scriptDetail.deletedBadge', { defaultValue: '已删除' })}
+                                    </span>
+                                )}
                                 <span className="font-mono text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30 px-2 py-0.5 rounded-md text-xs font-semibold leading-5">v{script.version}</span>
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md" title={t('scriptDetail.installs', { count: script.installs })}>
                                     <ArrowDownTrayIcon className="w-3 h-3" />{formatCount(script.installs, i18n.language)}

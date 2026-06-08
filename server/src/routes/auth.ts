@@ -1,13 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../db';
-import { users, scripts, capTokens } from '../db';
-import { eq, and, gt, count, sql } from 'drizzle-orm';
+import { users, scripts } from '../db';
+import { eq, count } from 'drizzle-orm';
+import { userRepo, captchaRepo, scriptRepo } from '../db/repos';
 import { requireAuth, createUserToken, verifyToken, renewTokenIfNeeded, hashPassword, verifyPassword, getCurrentUser, AuthPayload } from '../middleware/auth';
 import crypto from 'crypto';
-import { sanitizeField, FIELD_LIMITS } from '../utils/validate';
+import { sanitizeField, FIELD_LIMITS, isUsernameBlacklisted } from '../utils/validate';
 import { audit } from '../utils/audit';
-import cap from '../utils/cap';
-import { isProd, MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION_MS, ATTEMPT_WINDOW_MS } from '../config';
+import { isProd, MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION_MS, ATTEMPT_WINDOW_MS, TOKEN_DURATION_MS } from '../config';
 import { getClientIp, hashIP } from '../utils/ip';
 
 const router = Router();
@@ -23,16 +23,11 @@ router.post('/register', async (req: Request, res: Response) => {
         res.status(400).json({ error: '请完成验证码', code: 'CAPTCHA_REQUIRED' });
         return;
     }
-    const capToken = captcha_token || req.body.cap_token;
+    const captchaToken = captcha_token || req.body.cap_token;
 
     // 原子操作：DELETE + 过期检查合并为一条 SQL，消除竞态条件
-    const delResult = db.delete(capTokens)
-        .where(and(
-            eq(capTokens.key, capToken),
-            gt(capTokens.expires, Date.now()),
-        )).run() as { changes?: number; rowCount?: number };
-    const affected = delResult.changes ?? delResult.rowCount ?? 0;
-    if (affected === 0) {
+    const affected = await captchaRepo.redeemToken(captchaToken);
+    if (!affected) {
         res.status(400).json({ error: '验证码错误或已使用', code: 'CAPTCHA_WRONG' });
         return;
     }
@@ -52,8 +47,14 @@ router.post('/register', async (req: Request, res: Response) => {
         return;
     }
 
+    // 检查黑名单
+    if (isUsernameBlacklisted(safeName)) {
+        res.status(400).json({ error: '该用户名不可用' });
+        return;
+    }
+
     // 检查重名
-    const existing = db.select({ id: users.id }).from(users).where(eq(users.username, safeName)).get();
+    const existing = await userRepo.findIdByUsername(safeName);
     if (existing) {
         res.status(409).json({ error: '用户名已被使用' });
         return;
@@ -63,18 +64,14 @@ router.post('/register', async (req: Request, res: Response) => {
     const display = sanitizeField(display_name || safeName, 100);
 
     const role: 'admin' | 'user' = 'user';
-    const tokenNonce = crypto.randomBytes(8).toString('hex');
 
-    const [user] = await (db.insert(users).values({
+    const user = await userRepo.create({
         username: safeName,
         displayName: display,
         passwordHash: hash,
         role,
-        tokenNonce,
-    }).returning({
-        id: users.id, username: users.username, displayName: users.displayName,
-        role: users.role, avatarUrl: users.avatarUrl, tokenNonce: users.tokenNonce, createdAt: users.createdAt,
-    }));
+        tokenNonce: crypto.randomBytes(8).toString('hex'),
+    });
 
     const token = createUserToken(user);
 
@@ -82,7 +79,7 @@ router.post('/register', async (req: Request, res: Response) => {
         httpOnly: true,
         sameSite: 'lax',
         secure: isProd,
-        maxAge: 24 * 60 * 60 * 1000,
+        maxAge: TOKEN_DURATION_MS,
         path: '/',
     });
 
@@ -100,22 +97,19 @@ router.post('/register', async (req: Request, res: Response) => {
  * 若该用户已存在则跳过，幂等安全。
  */
 export async function ensureAdmin(username: string, password: string): Promise<void> {
-    const existing = db.select({ id: users.id }).from(users).where(eq(users.username, username)).get();
+    const existing = await userRepo.findIdByUsername(username);
     if (existing) {
         console.log(`👤 管理员 "${username}" 已存在，跳过初始化`);
         return;
     }
 
-    const hash = hashPassword(password);
-    const tokenNonce = crypto.randomBytes(8).toString('hex');
-
-    db.insert(users).values({
+    await userRepo.create({
         username,
         displayName: username,
-        passwordHash: hash,
+        passwordHash: hashPassword(password),
         role: 'admin',
-        tokenNonce,
-    }).run();
+        tokenNonce: crypto.randomBytes(8).toString('hex'),
+    });
 
     console.log(`👑 管理员账号 "${username}" 已通过环境变量创建`);
     audit('admin.action', null, `管理员账号已通过环境变量初始化: ${username}`);
@@ -137,7 +131,7 @@ setInterval(() => {
 }, 60 * 1000).unref();
 
 // POST /api/auth/login - 使用用户名和密码登录
-router.post('/login', (req: Request, res: Response) => {
+router.post('/login', async (req: Request, res: Response) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -157,7 +151,7 @@ router.post('/login', (req: Request, res: Response) => {
         return;
     }
 
-    const user = db.select().from(users).where(eq(users.username, username)).get();
+    const user = await userRepo.findByUsername(username);
     if (!user || !verifyPassword(password, user.passwordHash)) {
         // 记录失败尝试
         const willLock = attempt && attempt.count + 1 >= MAX_LOGIN_ATTEMPTS;
@@ -188,7 +182,7 @@ router.post('/login', (req: Request, res: Response) => {
         httpOnly: true,
         sameSite: 'lax',
         secure: isProd,
-        maxAge: 24 * 60 * 60 * 1000,
+        maxAge: TOKEN_DURATION_MS,
         path: '/',
     });
 
@@ -204,12 +198,12 @@ router.post('/login', (req: Request, res: Response) => {
 // ── 登出 ──
 
 // POST /api/auth/logout - 登出（使 token 失效）
-router.post('/logout', requireAuth, (req: Request, res: Response) => {
+router.post('/logout', requireAuth, async (req: Request, res: Response) => {
     // 递增 tokenNonce 使该用户的所有现有 token 失效
     const payload = getCurrentUser(req)!;
-    db.update(users).set({
+    await userRepo.update(payload.userId!, {
         tokenNonce: crypto.randomBytes(8).toString('hex'),
-    }).where(eq(users.id, payload.userId!)).run();
+    });
 
     res.clearCookie('session_token', { path: '/' });
     res.json({ message: '已退出登录' });
@@ -221,7 +215,7 @@ router.post('/logout', requireAuth, (req: Request, res: Response) => {
 // ── 状态与个人资料 ──
 
 // GET /api/auth/status - 检查登录状态并返回当前用户
-router.get('/status', (_req: Request, res: Response) => {
+router.get('/status', async (_req: Request, res: Response) => {
     const token = _req.cookies?.session_token;
 
     if (!token) {
@@ -235,10 +229,10 @@ router.get('/status', (_req: Request, res: Response) => {
         return;
     }
 
-    const user = db.select({
-        id: users.id, username: users.username, displayName: users.displayName,
-        role: users.role, avatarUrl: users.avatarUrl,
-    }).from(users).where(eq(users.id, payload.userId)).get();
+    const user = await userRepo.findById(payload.userId!, {
+        id: true, username: true, displayName: true,
+        role: true, avatarUrl: true,
+    });
 
     if (!user) {
         res.json({ authenticated: false, user: null });
@@ -255,23 +249,22 @@ router.get('/status', (_req: Request, res: Response) => {
 });
 
 // GET /api/auth/me - 获取当前用户资料（需已登录）
-router.get('/me', requireAuth, (req: Request, res: Response) => {
+router.get('/me', requireAuth, async (req: Request, res: Response) => {
     const current = getCurrentUser(req)!;
     const userId = current.userId!;
-    const user = db.select({
-        id: users.id, username: users.username, displayName: users.displayName,
-        role: users.role, avatarUrl: users.avatarUrl, createdAt: users.createdAt,
-    }).from(users).where(eq(users.id, userId)).get();
+    const user = await userRepo.findById(userId, {
+        id: true, username: true, displayName: true,
+        role: true, avatarUrl: true, createdAt: true,
+    });
 
     // 统计用户的脚本数
-    const [{ count: scriptCount }] = db.select({ count: count() }).from(scripts)
-        .where(eq(scripts.userId, userId)).all();
+    const scriptCount = await scriptRepo.countByUserId(userId);
 
-    res.json({ user: { ...user, scriptCount: scriptCount } });
+    res.json({ user: { ...user, scriptCount } });
 });
 
 // PUT /api/auth/me - 更新当前用户资料（需已登录）
-router.put('/me', requireAuth, (req: Request, res: Response) => {
+router.put('/me', requireAuth, async (req: Request, res: Response) => {
     const current = getCurrentUser(req)!;
     const userId = current.userId!;
     const { displayName } = req.body;
@@ -287,22 +280,21 @@ router.put('/me', requireAuth, (req: Request, res: Response) => {
         return;
     }
 
-    db.update(users).set(updateData).where(eq(users.id, userId)).run();
+    await userRepo.update(userId, updateData);
     audit('user.update_profile', userId, `用户 #${userId} 更新了个人资料`);
 
-    const updated = db.select({
-        id: users.id, username: users.username, displayName: users.displayName,
-        role: users.role, avatarUrl: users.avatarUrl, createdAt: users.createdAt,
-    }).from(users).where(eq(users.id, userId)).get();
+    const updated = await userRepo.findById(userId, {
+        id: true, username: true, displayName: true,
+        role: true, avatarUrl: true, createdAt: true,
+    });
 
-    const [{ count: scriptCount }] = db.select({ count: count() }).from(scripts)
-        .where(eq(scripts.userId, userId)).all();
+    const scriptCount = await scriptRepo.countByUserId(userId);
 
     res.json({ user: { ...updated, scriptCount } });
 });
 
 // POST /api/auth/change-password - 修改密码（需已登录）
-router.post('/change-password', requireAuth, (req: Request, res: Response) => {
+router.post('/change-password', requireAuth, async (req: Request, res: Response) => {
     const current = getCurrentUser(req)!;
     const userId = current.userId!;
     const { currentPassword, newPassword } = req.body;
@@ -316,45 +308,42 @@ router.post('/change-password', requireAuth, (req: Request, res: Response) => {
         return;
     }
 
-    const user = db.select({ passwordHash: users.passwordHash })
-        .from(users).where(eq(users.id, userId)).get();
-    if (!user) {
+    const pwHash = await userRepo.findPasswordHashById(userId);
+    if (!pwHash) {
         res.status(404).json({ error: '用户不存在' });
         return;
     }
 
-    if (!verifyPassword(currentPassword, user.passwordHash)) {
+    if (!verifyPassword(currentPassword, pwHash.passwordHash)) {
         res.status(403).json({ error: '当前密码错误' });
         return;
     }
 
-    const hashed = hashPassword(newPassword);
-    db.update(users).set({ passwordHash: hashed }).where(eq(users.id, userId)).run();
+    await userRepo.update(userId, { passwordHash: hashPassword(newPassword) });
     audit('user.change_password', userId, `用户 #${userId} 修改了密码`);
 
     res.json({ message: '密码已更新' });
 });
 
 // GET /api/users/:id - 查看用户的公开资料
-router.get('/users/:id', (req: Request, res: Response) => {
+router.get('/users/:id', async (req: Request, res: Response) => {
     const id = parseInt(String(req.params.id));
     if (isNaN(id)) {
         res.status(400).json({ error: '无效的用户 ID' });
         return;
     }
 
-    const user = db.select({
-        id: users.id, username: users.username, displayName: users.displayName,
-        avatarUrl: users.avatarUrl, createdAt: users.createdAt,
-    }).from(users).where(eq(users.id, id)).get();
+    const user = await userRepo.findById(id, {
+        id: true, username: true, displayName: true,
+        avatarUrl: true, createdAt: true,
+    });
     if (!user) {
         res.status(404).json({ error: '用户不存在' });
         return;
     }
 
-    const [{ count: scriptCount }] = db.select({ count: count() }).from(scripts)
-        .where(eq(scripts.userId, id)).all();
-    res.json({ user: { ...user, scriptCount: scriptCount } });
+    const scriptCount = await scriptRepo.countByUserId(id);
+    res.json({ user: { ...user, scriptCount } });
 });
 
 export default router;

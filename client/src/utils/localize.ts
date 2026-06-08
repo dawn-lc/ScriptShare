@@ -21,32 +21,12 @@ export function getLocalizedText(
 
 /**
  * 将数字格式化为带单位的紧凑形式，支持本地化。
+ * 底层使用 Intl.NumberFormat notation=compact，内置支持各语言。
  * - zh: 10000 → 1万, 12345 → 1.2万, 100000000 → 1亿
- * - en/其他: 1000 → 1K, 1234 → 1.2K, 1000000 → 1M, 1000000000 → 1B
+ * - en: 1000 → 1K, 1234 → 1.2K, 1000000 → 1M, 1000000000 → 1B
  */
 export function formatCount(n: number, lang: string): string {
-    if (n < 10000) return String(n);
-
-    const isZh = lang.startsWith('zh');
-
-    if (isZh) {
-        if (n >= 100000000) {
-            const v = n / 100000000;
-            return (v % 1 === 0 ? v : Math.round(v * 10) / 10) + '亿';
-        }
-        const v = n / 10000;
-        return (v % 1 === 0 ? v : Math.round(v * 10) / 10) + '万';
-    }
-
-    // 非中文：K / M / B
-    if (n >= 1000000000) {
-        const v = n / 1000000000;
-        return (v % 1 === 0 ? v : Math.round(v * 10) / 10) + 'B';
-    }
-    if (n >= 1000000) {
-        const v = n / 1000000;
-        return (v % 1 === 0 ? v : Math.round(v * 10) / 10) + 'M';
-    }
-    const v = n / 1000;
-    return (v % 1 === 0 ? v : Math.round(v * 10) / 10) + 'K';
+    // 小于万 / 千的直接返回整数，避免 compact 输出 "1,000" 等千分位形式
+    if (n < 1000 || (lang.startsWith('zh') && n < 10000)) return String(n);
+    return new Intl.NumberFormat(lang, { notation: 'compact' }).format(n);
 }

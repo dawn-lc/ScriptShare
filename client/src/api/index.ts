@@ -10,12 +10,12 @@ export interface Script {
     author: string;
     icon: string;
     icon64: string;
-    grant: string;
-    match: string;
-    exclude: string;
-    require: string;
-    resource: string;
-    connect: string;
+    grant: string[];
+    match: string[];
+    exclude: string[];
+    require: string[];
+    resource: string[];
+    connect: string[];
     code?: string;
     filename: string;
     userId?: number | null;
@@ -25,6 +25,7 @@ export interface Script {
     updateChecks: number;
     createdAt: string;
     updatedAt: string;
+    deletedAt?: string;
     i18n?: Record<string, Record<string, string>>;
 }
 
@@ -40,6 +41,7 @@ export interface ScriptListItem {
     updateChecks: number;
     createdAt: string;
     updatedAt: string;
+    deletedAt?: string;
     i18n?: Record<string, Record<string, string>>;
     rating?: number;
     ratingCount?: number;
@@ -204,9 +206,6 @@ export async function getMyProfile(): Promise<{ user: UserInfo }> {
     return request('/auth/me');
 }
 
-export async function getUserProfile(id: number): Promise<{ user: UserInfo }> {
-    return request(`/auth/users/${id}`);
-}
 
 export function getInstallUrl(id: number, channel?: string) {
     const prefix = channel && channel !== 'stable' ? '/canary' : '/stable';
@@ -232,7 +231,6 @@ export function rateScript(id: number, score: number): Promise<{ message: string
         body: JSON.stringify({ score }),
     });
 }
-export function getCanaryUpdateUrl(id: number) { return getUpdateUrl(id, 'canary'); }
 
 export function checkUpdate(id: number, version: string) {
     return request<{
@@ -268,6 +266,10 @@ export function updateScript(id: number, code: string, readme?: string) {
 
 export function deleteScript(id: number) {
     return request<{ message: string }>(`/scripts/${id}`, { method: 'DELETE' });
+}
+
+export function hardDeleteScript(id: number) {
+    return request<{ message: string }>(`/scripts/${id}/hard`, { method: 'DELETE' });
 }
 
 export interface WebhookInfo {
@@ -393,15 +395,15 @@ export function getAdminSystem() {
     return request<AdminSystemInfo>('/stats/admin/system');
 }
 
-// ── Cap CAPTCHA API ──
+// ── CAPTCHA API ──
 
-export async function createCapChallenge(): Promise<{ challenge: { c: number; s: number; d: number }; token: string; expires: number }> {
-    const res = await fetch(`${API_BASE}/cap/challenge`, { method: 'POST' });
+export async function createCapChallenge(): Promise<{ challenge: { count: number; saltLen: number; difficulty: number; argon2: { memorySize: number; iterations: number; parallelism: number } }; token: string; expires: number }> {
+    const res = await fetch(`${API_BASE}/captcha/challenge`, { method: 'POST' });
     return res.json();
 }
 
 export async function redeemCapChallenge(token: string, solutions: string[]): Promise<{ success: boolean; token?: string; error?: string }> {
-    const res = await fetch(`${API_BASE}/cap/redeem`, {
+    const res = await fetch(`${API_BASE}/captcha/redeem`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, solutions }),

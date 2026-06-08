@@ -96,7 +96,7 @@ export default function ScriptSettings() {
 
     function copyToClipboard(text: string, label: string) {
         navigator.clipboard.writeText(text).then(() => {
-            alert(t('scriptDetail.copySuccess', { label }));
+            alert(t('scriptDetail.copySuccess', { label }), 'success');
         });
     }
 

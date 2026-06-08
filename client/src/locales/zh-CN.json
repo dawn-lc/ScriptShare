@@ -1,4 +1,6 @@
 {
+    "language.label": "简体中文",
+
     "app.name": "ScriptShare",
     "app.footer": "用户脚本分发平台",
     "app.devBy": "由 DeepSeek V4 Flash 开发",
@@ -58,8 +60,10 @@
     "scriptDetail.settings": "设置",
     "scriptDetail.delete": "删除",
     "scriptDetail.deleting": "删除中...",
-    "scriptDetail.deleteConfirm": "确定要删除脚本 \"{{name}}\" 吗？此操作不可恢复。",
+    "scriptDetail.deleteConfirm": "请确认删除脚本 \"{{name}}\"？",
     "scriptDetail.deleteFail": "删除失败: {{msg}}",
+    "scriptDetail.hardDelete": "永久删除",
+    "scriptDetail.hardDeleteConfirm": "请确认永久删除脚本 \"{{name}}\"？此操作不可恢复！",
     "scriptDetail.share": "分享",
     "scriptDetail.shareCopied": "链接已复制到剪贴板",
     "scriptDetail.installs": "安装 {{count}} 次",
@@ -171,9 +175,6 @@
 
     "register.title": "注册账号",
     "register.desc": "创建一个新账号",
-    "register.firstUserWarning.title": "首次注册安全警告",
-    "register.firstUserWarning.desc1": "这是第一个账号，将获得管理员权限。",
-    "register.firstUserWarning.desc2": "请设置一个强密码，并尽快完成注册。",
     "register.username": "用户名 *",
     "register.usernamePlaceholder": "字母、数字或中文",
     "register.displayName": "显示名称（可选）",
@@ -184,12 +185,12 @@
     "register.confirmPlaceholder": "再次输入密码",
     "register.cap.verified": "验证通过",
 
+    "register.cap.failed": "验证失败: {{msg}}",
     "register.cap.calculating": "正在计算验证...",
     "register.cap.retry": "重试",
 
-    "register.cap.progress": "正在进行运算量证明（已过 {{seconds}} 秒）... {{percent}}%",
+    "register.cap.progress": "正在进行运算量证明... {{percent}}%（已过 {{seconds}} 秒）",
     "register.cap.progressSimple": "正在进行运算量证明... {{percent}}%",
-    "register.cap.passed": "验证通过，可以提交注册",
     "register.cap.retryHint": "点击「重试」重新加载验证",
     "register.error.username": "请输入用户名",
     "register.error.passwordLength": "密码至少需要 6 个字符",
@@ -291,6 +292,7 @@
     "admin.audit.detail": "详情",
     "admin.audit.noMore": "已加载全部 {{total}} 条审计日志",
 
+    "common.close": "关闭",
     "common.loading": "加载中...",
     "common.error": "错误",
     "common.save": "保存",

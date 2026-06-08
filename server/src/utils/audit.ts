@@ -3,10 +3,10 @@
  * 记录重要操作（登录、注册、脚本 CRUD、管理员操作）
  * 到 audit_logs 表中，供管理面板审核。
  */
-import { db } from '../db';
-import { auditLogs } from '../db';
+import { auditRepo } from '../db/repos';
 
 export type AuditAction =
+    | 'rate_limit.exceeded'
     | 'user.register'
     | 'user.login'
     | 'user.logout'
@@ -15,6 +15,7 @@ export type AuditAction =
     | 'script.create'
     | 'script.update'
     | 'script.delete'
+    | 'script.hard_delete'
     | 'script.install'
     | 'script.check_update'
     | 'script.rate'
@@ -44,14 +45,12 @@ export function audit(
     detail: string,
     metadata?: Record<string, unknown>,
 ): void {
-    try {
-        db.insert(auditLogs).values({
-            action,
-            userId,
-            detail,
-            metadata: metadata || null,
-        }).run();
-    } catch (err: unknown) {
+    auditRepo.create({
+        action,
+        userId,
+        detail,
+        metadata: metadata || null,
+    }).catch((err) => {
         console.error('[audit] Failed to write audit log:', err);
-    }
+    });
 }
